@@ -53,8 +53,8 @@ Anrufe sind nicht enthalten und kommen nicht ins Buch.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
   nicht – sonst ruckelt das Tippen. Export/Druck immer mit Korn.
 - **Menü „Jahresbuch ▸ WhatsApp-Chat einfließen lassen …“** (`crates/ui-egui/src/jahresbuch_dialog.rs`):
-  Export, Medienordner, Zeitraum, 4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel,
-  Knopf „Nur Gestaltung aufs Dokument anwenden“. Ruft `jahresbuch/designcraft_import.py` auf
+  Export, Medienordner, Zeitraum, 4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel und Abstände,
+  Haken „Vorschau“, Knopf „Gestaltung übernehmen“. Ruft `jahresbuch/designcraft_import.py` auf
   (Python aus `~/WhatsApp-Export/.venv`), führt dessen Skripte im **offenen Buch** aus:
   Einrichtung (Farbfelder, Formate, Mustervorlage **J-Chat**, basiert auf der ersten Mustervorlage
   des Buchs → Seitenzahl kommt vom Buch), dann der Chat in den **markierten leeren Textrahmen**
@@ -76,6 +76,14 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
 - **Farben:** 4 Hauptfarben (Farbe Ich #E8493A Koralle, Farbe Sie #3554E0 Blau, Textfarbe #1E2A5A,
   Papier #F6F0E3); alle Varianten als Tonwert-Farbfelder in der Gruppe „Jahresbuch“
   (Ich/Sie · Blase, · Schatten, · Verzierung, Spalte · Schatten, Papier · Pille).
+- **Abstände** (im Menü als Regler, pt; Vorgaben vom User am 21.11.2026 verkleinert): Datum → erste
+  Nachricht **9,5**, Nachrichten derselben Person **12**, Wechsel zur anderen Person **14,5**
+  (stil.json `abstand`). Technik: „Chat Sie“ hat Abstand davor = Datum-Abstand, danach = Wechsel −
+  Datum, Abstand bei gleichen Formaten = gleiche Person. Foto-Serien: alle Reihen außer der letzten
+  „Album X n“, die letzte „Album X n Ende“; eine einzelne Reihe ist eine normale Bildblase.
+  Bekannt: Text → Foto derselben Person bekommt den Wechsel-Abstand (andere Formate).
+- **Vorschau** im Jahresbuch-Menü: Haken „Vorschau“ zeigt Farben, Schrift, Korn, Rauschen und
+  Abstände sofort im offenen Dokument; „Gestaltung übernehmen“ macht es fest, Abbrechen nimmt es zurück.
 - **Blasen:** ihre links hellblau, seine rechts hell-koralle, Schatten in der Gegenfarbe,
   Korn in den Blasen (nicht auf Fotos!), genug Abstand (kein Überlappen), Uhrzeit in der Blase,
   **keine ✓✓**, kein „bearbeitet“.

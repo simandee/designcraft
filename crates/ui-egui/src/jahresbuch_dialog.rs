@@ -1,7 +1,8 @@
 //! Jahresbuch › WhatsApp-Chat einfließen lassen …: ein WhatsApp-Export (JSON und Medienordner)
 //! fließt als Chat im Riso-Stil in den markierten Textrahmen des offenen Buchs (oder auf neue
 //! Chat-Seiten am Ende) und läuft durch verkettete Rahmen weiter. Farben, Schrift, Korn und
-//! Rauschen sind hier einstellbar und lassen sich auch ohne Import aufs Dokument anwenden.
+//! Rauschen und Abstände sind hier einstellbar, mit Vorschau im offenen Dokument, und lassen sich
+//! auch ohne Import aufs Dokument anwenden.
 //!
 //! Den Chat baut das Hilfsprogramm `jahresbuch/designcraft_import.py` (Python) als Befehlsskript;
 //! dieses Fenster ruft es auf und führt die Skripte im offenen Dokument aus.
@@ -52,6 +53,17 @@ const REGLER: [(&str, &str, &str, f64); 5] = [
     ("rauschenRahmen", "rauschen.rahmen", "Rauschen Rahmen (Blau)", 0.6),
     ("sprenkelRahmen", "sprenkel.rahmen", "Sprenkel Rahmen (Blau)", 1.0),
 ];
+
+/// Abstände (pt): (Schlüssel im Fenster, Schlüssel in stil.json, Beschriftung, Standard).
+const ABSTAENDE: [(&str, &str, &str, f64); 3] = [
+    ("abstandDatum", "abstand.datum", "Datum → erste Nachricht", 9.5),
+    ("abstandGleich", "abstand.gleiche_person", "Nachrichten derselben Person", 12.0),
+    ("abstandWechsel", "abstand.wechsel", "Wechsel zur anderen Person", 14.5),
+];
+/// Abstand letzte Nachricht → nächstes Datum (pt, gesamt), wie im Hilfsprogramm.
+const DATUM_VOR: f64 = 20.0;
+/// Welche Gestaltung die Vorschau gerade zeigt.
+const VORSCHAU_FELDER: &str = "_vorschauFelder";
 
 const FARBEN: [(&str, &str, &str, &str); 4] = [
     ("farbeIch", "farbe_ich", "Farbe Ich", "#E8493A"),
@@ -123,9 +135,10 @@ pub fn open(app: &mut DesignApp) -> Result<(), String> {
     for (k, sk, _, standard) in FARBEN {
         f.insert(k.into(), json!(s(sk, standard)));
     }
-    for (k, sk, _, standard) in REGLER {
-        f.insert(k.into(), json!(stil_wert(&stil, sk).and_then(Value::as_f64).unwrap_or(standard)));
+    for (k, sk, _, standard) in REGLER.iter().chain(ABSTAENDE.iter()) {
+        f.insert((*k).into(), json!(stil_wert(&stil, sk).and_then(Value::as_f64).unwrap_or(*standard)));
     }
+    f.insert("vorschau".into(), json!(false));
     f.insert("ziel".into(), json!(markierter_rahmen(&inspect).is_some()));
     app.ui.dialog = Some(Dialog::new(ID, Value::Object(f)));
     Ok(())
@@ -222,16 +235,39 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
         }
     });
 
+    kopf(ui, "Abstände (pt)");
+    egui::Grid::new("jahresbuch_abstaende").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+        for (k, _, l, standard) in ABSTAENDE {
+            ui.label(l);
+            let mut v = d.n(k).unwrap_or(standard);
+            if ui.add(egui::Slider::new(&mut v, 0.0..=30.0).step_by(0.5)).changed() {
+                d.fields.insert(k.into(), json!(v));
+            }
+            ui.end_row();
+        }
+    });
+
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        if ui.button("Nur Gestaltung aufs Dokument anwenden").clicked() {
+        let mut an = d.b("vorschau");
+        if ui
+            .checkbox(&mut an, "Vorschau")
+            .on_hover_text("Zeigt Farben, Schrift, Korn, Rauschen und Abstände sofort im Chat dieses Dokuments. Abbrechen nimmt alles zurück.")
+            .changed()
+        {
+            d.fields.insert("vorschau".into(), json!(an));
+        }
+        ui.add_space(12.0);
+        if ui.button("Gestaltung übernehmen").clicked() {
+            vorschau_beenden(app, d);
             speichere_stil(d);
             match gestaltung_anwenden(app, d) {
-                Ok(()) => app.status("Gestaltung angewendet."),
+                Ok(()) => app.status("Gestaltung übernommen."),
                 Err(e) => app.status(e),
             }
         }
     });
+    vorschau(app, d);
     ui.collapsing("Erweitert", |ui| {
         ui.label("Python:");
         let mut s = d.s("python");
@@ -261,7 +297,7 @@ fn speichere_stil(d: &Dialog) {
     for (k, sk, _, _) in FARBEN {
         stil.insert(sk.into(), json!(d.s(k)));
     }
-    for (k, sk, _, _) in REGLER {
+    for (k, sk, _, _) in REGLER.iter().chain(ABSTAENDE.iter()) {
         setze_stil(&mut stil, sk, json!(d.n(k).unwrap_or(0.0)));
     }
     if let Ok(t) = serde_json::to_string_pretty(&Value::Object(stil)) {
@@ -272,46 +308,139 @@ fn speichere_stil(d: &Dialog) {
     }
 }
 
-/// Farben, Schrift, Korn und Rauschen auf ein Dokument anwenden, das den Chat schon enthält
-/// (was fehlt, wird übersprungen).
-fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
+/// Absatzabstände (pt) aus den Reglern: (vor der Blase, nach der Blase, gleiche Person, vor dem
+/// Datum). Vor der Blase steht der Abstand Datum → erste Nachricht; bei einem Personenwechsel
+/// kommen „nach“ und „vor“ zusammen; dieselbe Person nutzt den Abstand für gleiche Formate, der
+/// beide ersetzt. Gleiche Rechnung wie `abstaende` im Hilfsprogramm.
+fn abstaende(d: &Dialog) -> (f64, f64, f64, f64) {
+    let wert = |k: &str| d.n(k).or_else(|| ABSTAENDE.iter().find(|a| a.0 == k).map(|a| a.3)).unwrap_or(0.0).max(0.0);
+    let (datum, gleich, wechsel) = (wert("abstandDatum"), wert("abstandGleich"), wert("abstandWechsel"));
+    let nach = (wechsel - datum).max(0.0);
+    (datum, nach, gleich, (DATUM_VOR - nach).max(0.0))
+}
+
+/// Farben, Schrift, Korn, Rauschen und Abstände für ein Dokument, das den Chat schon enthält, als
+/// Befehlsskript (was im Dokument fehlt, wird übersprungen).
+fn gestaltung_skript(app: &mut DesignApp, d: &Dialog) -> Result<String, String> {
     let inspect = app.session.execute("document.inspect", &json!({})).map_err(|e| e.to_string())?;
     let hat = |liste: &str, name: &str| inspect[liste].as_array().is_some_and(|a| a.iter().any(|v| v == name));
     if !hat("swatches", "Farbe Ich") {
         return Err("Im Dokument ist noch kein Chat – erst importieren.".into());
     }
+    let mut befehle: Vec<Value> = Vec::new();
+    let mut b = |command: &str, params: Value| befehle.push(json!({"command": command, "params": params}));
     for (k, _, name, _) in FARBEN {
         if hat("swatches", name) {
-            app.run("swatch.options", json!({"name": name, "color": d.s(k)}))?;
+            b("swatch.options", json!({"name": name, "color": d.s(k)}));
         }
     }
     let schrift = d.s("schrift");
     for name in ["Chat Sie", "Seitenzahl"] {
         if hat("paragraphStyles", name) {
-            app.run("style.paragraph.edit", json!({"name": name, "chars": {"fontFamily": schrift}}))?;
+            b("style.paragraph.edit", json!({"name": name, "chars": {"fontFamily": schrift}}));
         }
     }
     for (stil, key) in [("Chat Sie", "kornBlasen"), ("Datum", "kornDatum"), ("Spalte Schatten", "sprenkelRahmen")] {
         if hat("paragraphStyles", stil) {
-            app.run("style.paragraph.edit", json!({"name": stil, "para": {"shadingSpeckle": d.n(key).unwrap_or(0.0)}}))?;
+            b("style.paragraph.edit", json!({"name": stil, "para": {"shadingSpeckle": d.n(key).unwrap_or(0.0)}}));
+        }
+    }
+    // Abstände (die übrigen Blasenformate erben sie von „Chat Sie“).
+    let (vor, nach, gleich, datum_vor) = abstaende(d);
+    let mut abstand = |stil: String, para: Value| {
+        if hat("paragraphStyles", &stil) {
+            b("style.paragraph.edit", json!({"name": stil, "para": para}));
+        }
+    };
+    abstand("Chat Sie".into(), json!({"spaceBefore": vor, "spaceAfter": nach, "sameParaStyleSpacing": gleich}));
+    abstand("Datum".into(), json!({"spaceBefore": datum_vor, "spaceAfter": 0}));
+    for seite in ["Sie", "Ich"] {
+        for basis in ["Chat", "Bild", "Emoji", "Sticker"] {
+            abstand(format!("{basis} {seite} mit Reaktion"), json!({"spaceAfter": 0}));
+        }
+        for v in ["1", "2"] {
+            abstand(format!("Album {seite} {v}"), json!({"spaceBefore": vor, "spaceAfter": 0}));
+            abstand(format!("Album {seite} {v} Ende"), json!({"spaceAfter": nach}));
+            abstand(format!("Album {seite} {v} Ende mit Reaktion"), json!({"spaceAfter": 0}));
+            // Ältere Chats beginnen eine Foto-Serie mit „… Anfang“.
+            abstand(format!("Album {seite} {v} Anfang"), json!({"spaceBefore": vor}));
         }
     }
     // Rauschen: Bildrahmen auf der Mustervorlage, nach ihrem Namen gefunden; Stärke = Deckkraft.
-    for (label, key, hell) in
-        [("Rauschen Innenfläche", "rauschenInnen", false), ("Rauschen Rahmen (Blau)", "rauschenRahmen", true)]
-    {
-        let ids: Vec<Value> = app.run("object.findByLabel", json!({"label": label}))?["ids"].as_array().cloned().unwrap_or_default();
+    for (label, key, hell) in [("Rauschen Innenfläche", "rauschenInnen", false), ("Rauschen Rahmen (Blau)", "rauschenRahmen", true)] {
+        let gefunden = app.session.execute("object.findByLabel", &json!({"label": label})).map_err(|e| e.to_string())?;
+        let ids: Vec<Value> = gefunden["ids"].as_array().cloned().unwrap_or_default();
         if ids.is_empty() {
             continue;
         }
         let v = d.n(key).unwrap_or(0.0).clamp(0.0, 1.0);
         let deckkraft = if hell { v } else { 0.3 * v };
         if v > 0.0 {
-            app.run("object.opacity", json!({"opacity": deckkraft, "ids": ids}))?;
+            b("object.opacity", json!({"opacity": deckkraft, "ids": ids}));
         }
-        app.run("object.setFlags", json!({"ids": ids, "hidden": v <= 0.0}))?;
+        b("object.setFlags", json!({"ids": ids, "hidden": v <= 0.0}));
     }
-    Ok(())
+    Ok(befehle.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"))
+}
+
+/// Die Gestaltung fest aufs Dokument anwenden (ein Rückgängig-Schritt).
+fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
+    let text = gestaltung_skript(app, d)?;
+    skript(app, text).map(|_| ())
+}
+
+/// Die Felder, die die Gestaltung bestimmen: ändert sich einer, wird die Vorschau neu gezeigt.
+fn gestaltungs_felder(d: &Dialog) -> Value {
+    let mut f = Map::new();
+    let schluessel = FARBEN.iter().map(|x| x.0).chain(REGLER.iter().map(|x| x.0)).chain(ABSTAENDE.iter().map(|x| x.0)).chain(["schrift"]);
+    for k in schluessel {
+        f.insert(k.into(), d.fields.get(k).cloned().unwrap_or(Value::Null));
+    }
+    Value::Object(f)
+}
+
+/// Vorschau an: die Gestaltung zeigt sich sofort im offenen Dokument (bei jeder Änderung neu),
+/// ohne Rückgängig-Schritt; aus oder Abbrechen: das Dokument ist wieder wie vorher.
+fn vorschau(app: &mut DesignApp, d: &mut Dialog) {
+    let gezeigt = d.fields.contains_key(crate::dialogs::PREVIEWED);
+    if !d.b("vorschau") {
+        if gezeigt {
+            vorschau_beenden(app, d);
+        }
+        return;
+    }
+    let felder = gestaltungs_felder(d);
+    if gezeigt && d.fields.get(VORSCHAU_FELDER) == Some(&felder) {
+        return;
+    }
+    d.fields.insert(VORSCHAU_FELDER.into(), felder);
+    let text = match gestaltung_skript(app, d) {
+        Ok(t) => t,
+        Err(e) => {
+            d.fields.insert("vorschau".into(), json!(false));
+            if gezeigt {
+                vorschau_beenden(app, d);
+            }
+            app.status(e);
+            return;
+        }
+    };
+    if !gezeigt && let Err(e) = app.session.begin_interaction("Jahresbuch-Gestaltung") {
+        app.status(e.to_string());
+        return;
+    }
+    d.fields.insert(crate::dialogs::PREVIEWED.into(), json!(true));
+    if let Err(e) = app.session.preview("script.run", json!({"text": text})) {
+        app.status(format!("Vorschau nicht möglich: {e}"));
+    }
+}
+
+/// Die Vorschau zurücknehmen: das Dokument ist wieder wie beim Einschalten.
+fn vorschau_beenden(app: &mut DesignApp, d: &mut Dialog) {
+    if d.fields.remove(crate::dialogs::PREVIEWED).is_some() {
+        app.session.cancel_interaction();
+    }
+    d.fields.remove(VORSCHAU_FELDER);
 }
 
 /// Ein Befehlsskript aus einer Datei im offenen Dokument ausführen.
@@ -335,6 +464,10 @@ fn chat_seite_anhaengen(app: &mut DesignApp) -> Result<(u64, Vec<Value>), String
 
 /// OK: das Hilfsprogramm baut die Skripte, dann fließt der Chat ins Dokument.
 pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
+    // Eine laufende Vorschau zuerst zurücknehmen; die Gestaltung kommt nach dem Import fest dazu.
+    if d.fields.contains_key(crate::dialogs::PREVIEWED) {
+        app.session.cancel_interaction();
+    }
     speichere_stil(d);
     let export = d.s("export");
     if !std::path::Path::new(&export).is_file() {
@@ -410,6 +543,37 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gleiche_person(app: &DesignApp) -> Option<f64> {
+        let doc = &app.session.active().unwrap().doc;
+        doc.styles.paragraph.iter().find(|s| s.name == "Chat Sie").and_then(|s| s.para.same_para_style_spacing.flatten())
+    }
+
+    /// Die Vorschau zeigt eine geänderte Einstellung sofort im Dokument; ausgeschaltet ist das
+    /// Dokument wieder genau wie vorher.
+    #[test]
+    fn vorschau_zeigt_und_nimmt_zurueck() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"preset": "A4", "pages": 1})).unwrap();
+        app.run("swatch.create", json!({"name": "Farbe Ich", "color": "#E8493A"})).unwrap();
+        app.run("style.paragraph.create", json!({"name": "Chat Sie", "para": {"sameParaStyleSpacing": 12}})).unwrap();
+        let vorher = app.session.active().unwrap().doc.clone();
+        open(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        d.fields.insert("abstandGleich".into(), json!(20.0));
+        vorschau(&mut app, &mut d);
+        assert_eq!(gleiche_person(&app), Some(12.0), "ohne Haken bleibt das Dokument unverändert");
+        d.fields.insert("vorschau".into(), json!(true));
+        vorschau(&mut app, &mut d);
+        let gezeigt = gleiche_person(&app).unwrap();
+        assert!(gezeigt > 12.0, "die Vorschau zeigt den größeren Abstand");
+        d.fields.insert("abstandGleich".into(), json!(6.0));
+        vorschau(&mut app, &mut d);
+        assert!(gleiche_person(&app).unwrap() < 12.0, "eine weitere Änderung ersetzt die Vorschau");
+        d.fields.insert("vorschau".into(), json!(false));
+        vorschau(&mut app, &mut d);
+        assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &vorher), "ausgeschaltet: wieder wie vorher");
+    }
 
     /// Ein echter Durchlauf, nur mit einem Export auf diesem Rechner:
     /// JAHRESBUCH_TEST_EXPORT=… JAHRESBUCH_TEST_MEDIEN=… cargo test -p designcraft-ui-egui jahresbuch

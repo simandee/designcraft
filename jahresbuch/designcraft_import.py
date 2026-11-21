@@ -69,6 +69,11 @@ URL_RE = re.compile(r"https?://\S+")
 DEKO_HOEHE = {"balken": 6.5, "punkte": 7.5, "rauten": 8.6, "raster": 8.8, "sterne": 11.2, "pillen": 7.8, "kreuze": 10.5,
               "ringe": 12.2, "dreiecke": 8.0, "zickzack": 6.5, "treppe": 11.7, "blumen": 11.0, "konfetti": 8.6, "streifen": 9.0}
 DATUM_PT = 10
+# Standard-Abstände (pt), im Jahresbuch-Menü einstellbar (stil.json "abstand"): Datum -> erste
+# Nachricht, zwischen Nachrichten derselben Person, bei einem Personenwechsel.
+ABSTAND = {"datum": 9.5, "gleiche_person": 12, "wechsel": 14.5}
+DATUM_VOR = 20      # Abstand letzte Nachricht -> nächstes Datum (pt, gesamt)
+ALBUM_REIHEN = 3    # Abstand zwischen den Reihen einer Foto-Serie (pt)
 DEKO_MITTE = DATUM_PT * 0.36  # Mitte der Großbuchstaben über der Grundlinie
 
 # Abgeleitete Farben: (Farbfeld, Hauptfarbe, Tonwert). Überschreibbar in stil.json unter "tonwerte".
@@ -439,7 +444,12 @@ class Importer:
         while rest:
             reihen.append(rest[:2]); rest = rest[2:]
         for r, reihe in enumerate(reihen):
-            a = Absatz(f"Album {s} {variante}" if r else f"Album {s} {variante} Anfang")
+            if len(reihen) == 1:
+                a = Absatz(f"Bild {s}")  # eine Reihe: eine gewöhnliche Bildblase
+            elif r == len(reihen) - 1:
+                a = Absatz(f"Album {s} {variante} Ende")
+            else:
+                a = Absatz(f"Album {s} {variante}")
             for i, m in enumerate(reihe):
                 p = self.standbild(medium(self.medien, m.get("data")))
                 if len(reihe) == 1:
@@ -524,10 +534,22 @@ class Importer:
         return [("Farbe Ich", st.get("farbe_ich", "#E8493A")), ("Farbe Sie", st.get("farbe_sie", "#3554E0")),
                 ("Textfarbe", st.get("farbe_text", "#1E2A5A")), ("Papier", st.get("farbe_papier", "#F6F0E3"))]
 
+    def abstaende(self):
+        """Absatzabstände (pt) aus stil.json "abstand" -> (vor der Blase, nach der Blase, gleiche
+        Person, vor dem Datum). Vor der Blase steht der Abstand Datum -> erste Nachricht; bei einem
+        Personenwechsel kommen "nach" und "vor" zusammen; dieselbe Person nutzt den Abstand für
+        gleiche Formate, der beide ersetzt. Gleiche Rechnung wie im Jahresbuch-Menü (Rust)."""
+        a = self.stil.get("abstand", {})
+        datum, gleich, wechsel = (float(a.get(k, v)) for k, v in (("datum", ABSTAND["datum"]),
+                                  ("gleiche_person", ABSTAND["gleiche_person"]), ("wechsel", ABSTAND["wechsel"])))
+        nach = max(0.0, wechsel - datum)
+        return datum, nach, gleich, max(0.0, DATUM_VOR - nach)
+
     def formate(self):
         R = lambda r: [{"shape": "rounded", "size": r}] * 4
+        vor, nach, gleich, datum_vor = self.abstaende()
         chars = {"fontFamily": self.schrift, "fontStyle": "Regular", "size": 8.4, "fill": "Textfarbe"}
-        blase = {"align": "left", "leftIndent": 7, "rightIndent": BLASE_EINZUG, "spaceBefore": 19, "sameParaStyleSpacing": 13,
+        blase = {"align": "left", "leftIndent": 7, "rightIndent": BLASE_EINZUG, "spaceBefore": vor, "spaceAfter": nach, "sameParaStyleSpacing": gleich,
                  "hyphenate": True, "keepLinesTogether": True, "keepAllLines": True,
                  "shadingOn": True, "shadingColor": "Sie · Blase", "shadingTint": 1, "shadingOffsets": [3, 6, 4, 6],
                  "shadingWidth": "text", "shadingCorners": R(7), "borderMerge": False,
@@ -540,22 +562,23 @@ class Importer:
         for seite in ("Sie", "Ich"):
             s("style.paragraph.create", name=f"Bild {seite}", basedOn=f"Chat {seite}", para={"shadingOffsets": [3, 3, 3.5, 3]})
             # Album-Reihen: Abstand zwischen den Reihen klein, Flächen verschmelzen zu einer Blase.
+            # Alle Reihen außer der letzten im selben Format (Abstand für gleiche Formate = 3 pt),
+            # die letzte ("Ende") bringt den Abstand nach der Blase mit.
             # Zwei Varianten (1/2) wechseln sich je Serie ab und unterscheiden sich unsichtbar im
             # Schattenversatz, damit aufeinanderfolgende Serien nicht zu einer Blase verschmelzen.
             for v, versatz in (("1", 2.6), ("2", 2.6001)):
                 s("style.paragraph.create", name=f"Album {seite} {v}", basedOn=f"Bild {seite}",
-                  para={"spaceBefore": 3, "sameParaStyleSpacing": 3, "borderMerge": True, "keepWithNext": 1, "shadingOffsets": [3, 3, 3.5, 3],
-                        "shadingShadowOffset": [versatz, versatz]})
-                s("style.paragraph.create", name=f"Album {seite} {v} Anfang", basedOn=f"Album {seite} {v}",
-                  para={"spaceBefore": 19, "sameParaStyleSpacing": 13})
-                s("style.paragraph.create", name=f"Album {seite} {v} mit Reaktion", basedOn=f"Album {seite} {v}", para={})
-                s("style.paragraph.create", name=f"Album {seite} {v} Anfang mit Reaktion", basedOn=f"Album {seite} {v} Anfang", para={})
+                  para={"spaceBefore": vor, "spaceAfter": 0, "sameParaStyleSpacing": ALBUM_REIHEN, "borderMerge": True, "keepWithNext": 1,
+                        "shadingOffsets": [3, 3, 3.5, 3], "shadingShadowOffset": [versatz, versatz]})
+                s("style.paragraph.create", name=f"Album {seite} {v} Ende", basedOn=f"Album {seite} {v}",
+                  para={"spaceBefore": ALBUM_REIHEN, "spaceAfter": nach})
+                s("style.paragraph.create", name=f"Album {seite} {v} Ende mit Reaktion", basedOn=f"Album {seite} {v} Ende", para={"spaceAfter": 0})
             s("style.paragraph.create", name=f"Emoji {seite}", basedOn=f"Chat {seite}", para={"shadingOn": False})
             s("style.paragraph.create", name=f"Sticker {seite}", basedOn=f"Chat {seite}", para={"shadingOn": False})
             for basis in ("Chat", "Bild", "Emoji", "Sticker"):
                 off = [3, 3, 7.5, 3] if basis == "Bild" else [3, 6, 8, 6]
                 s("style.paragraph.create", name=f"{basis} {seite} mit Reaktion", basedOn=f"{basis} {seite}",
-                  para={"shadingOffsets": off} if basis in ("Chat", "Bild") else {})
+                  para={"spaceAfter": 0, **({"shadingOffsets": off} if basis in ("Chat", "Bild") else {})})
         pille = {"spaceBefore": 4.5, "sameParaStyleSpacing": 4.5, "keepLinesTogether": True, "shadingColor": "Papier · Pille",
                  "shadingTint": 1, "shadingOffsets": [1.5, 3.5, 2, 3.5], "shadingCorners": R(7), "shadingShadowOn": False,
                  "borderOn": True, "borderTint": 1, "borderWeights": [0.8] * 4, "borderOffsets": [1.5, 3.5, 2, 3.5],
@@ -564,7 +587,7 @@ class Importer:
             for von, kontur in (("von Ihr", "Farbe Sie"), ("von Mir", "Farbe Ich"), ("von Beiden", "Textfarbe")):
                 s("style.paragraph.create", name=f"Reaktion {seite} {von}", basedOn=f"Chat {seite}",
                   para={**pille, **einzug, "borderColor": kontur})
-        s("style.paragraph.create", name="Datum", para={"align": "center", "spaceBefore": 20, "spaceAfter": 3, "keepWithNext": 1,
+        s("style.paragraph.create", name="Datum", para={"align": "center", "spaceBefore": datum_vor, "spaceAfter": 0, "keepWithNext": 1,
           "shadingOn": True, "shadingColor": "[None]", "shadingWidth": "text", "shadingOffsets": [3, 4, 3, 4],
           "shadingSpeckle": float(self.stil.get("korn_datum", 0.4)), "shadingSpeckleColor": "Papier", "shadingSpeckleOverText": True},
           chars={"fontFamily": "Fraunces", "fontStyle": "SemiBold", "size": 10, "fill": "Farbe Sie"})

@@ -9477,7 +9477,7 @@ fn toc_dialog(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     d.fields.insert("titleStyle".into(), json!(title_style));
 }
 /// The params a previewing dialog shows on the page (its interaction is open while it is set).
-const PREVIEWED: &str = "_previewed";
+pub(crate) const PREVIEWED: &str = "_previewed";
 /// The uid of the document a Text Frame Options preview is shown in.
 const PREVIEW_DOC: &str = "_previewDoc";
 
