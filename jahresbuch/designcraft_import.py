@@ -71,8 +71,8 @@ DEKO_HOEHE = {"balken": 6.5, "punkte": 7.5, "rauten": 8.6, "raster": 8.8, "stern
 DATUM_PT = 10
 # Standard-Abstände (pt), im Jahresbuch-Menü einstellbar (stil.json "abstand"): Datum -> erste
 # Nachricht, zwischen Nachrichten derselben Person, bei einem Personenwechsel.
-ABSTAND = {"datum": 9.5, "gleiche_person": 12, "wechsel": 14.5}
-DATUM_VOR = 20      # Abstand letzte Nachricht -> nächstes Datum (pt, gesamt)
+# Dazu "vor_datum": letzte Nachricht -> nächstes Datum (gesamt).
+ABSTAND = {"vor_datum": 20, "datum": 9.5, "gleiche_person": 12, "wechsel": 14.5}
 ALBUM_REIHEN = 3    # Abstand zwischen den Reihen einer Foto-Serie (pt)
 DEKO_MITTE = DATUM_PT * 0.36  # Mitte der Großbuchstaben über der Grundlinie
 
@@ -558,7 +558,8 @@ class Importer:
         datum, gleich, wechsel = (float(a.get(k, v)) for k, v in (("datum", ABSTAND["datum"]),
                                   ("gleiche_person", ABSTAND["gleiche_person"]), ("wechsel", ABSTAND["wechsel"])))
         nach = max(0.0, wechsel - datum)
-        return datum, nach, gleich, max(0.0, DATUM_VOR - nach)
+        vor_datum = float(a.get("vor_datum", ABSTAND["vor_datum"]))
+        return datum, nach, gleich, max(0.0, vor_datum - nach)
 
     def rauschen_blasen(self):
         """Stärke des Rauschens auf den Chatblasen (0 = aus), aus stil.json."""

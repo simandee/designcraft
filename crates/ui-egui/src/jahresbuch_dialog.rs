@@ -58,13 +58,12 @@ const REGLER: [(&str, &str, &str, f64); 6] = [
 const RAUSCHEN_BLASEN_AN: (&str, &str) = ("rauschenBlasenAn", "rauschen_blasen_an");
 
 /// Abstände (pt): (Schlüssel im Fenster, Schlüssel in stil.json, Beschriftung, Standard).
-const ABSTAENDE: [(&str, &str, &str, f64); 3] = [
+const ABSTAENDE: [(&str, &str, &str, f64); 4] = [
+    ("abstandVorDatum", "abstand.vor_datum", "Letzte Nachricht → Datum", 20.0),
     ("abstandDatum", "abstand.datum", "Datum → erste Nachricht", 9.5),
     ("abstandGleich", "abstand.gleiche_person", "Nachrichten derselben Person", 12.0),
     ("abstandWechsel", "abstand.wechsel", "Wechsel zur anderen Person", 14.5),
 ];
-/// Abstand letzte Nachricht → nächstes Datum (pt, gesamt), wie im Hilfsprogramm.
-const DATUM_VOR: f64 = 20.0;
 /// Welche Gestaltung die Vorschau gerade zeigt.
 const VORSCHAU_FELDER: &str = "_vorschauFelder";
 
@@ -320,14 +319,15 @@ fn speichere_stil(d: &Dialog) {
 }
 
 /// Absatzabstände (pt) aus den Reglern: (vor der Blase, nach der Blase, gleiche Person, vor dem
-/// Datum). Vor der Blase steht der Abstand Datum → erste Nachricht; bei einem Personenwechsel
+/// Datum). Vor der Blase steht der Abstand Datum → erste Nachricht; vor dem Datum der Rest bis
+/// zum Abstand letzte Nachricht → Datum (nie weniger als „nach“); bei einem Personenwechsel
 /// kommen „nach“ und „vor“ zusammen; dieselbe Person nutzt den Abstand für gleiche Formate, der
 /// beide ersetzt. Gleiche Rechnung wie `abstaende` im Hilfsprogramm.
 fn abstaende(d: &Dialog) -> (f64, f64, f64, f64) {
     let wert = |k: &str| d.n(k).or_else(|| ABSTAENDE.iter().find(|a| a.0 == k).map(|a| a.3)).unwrap_or(0.0).max(0.0);
     let (datum, gleich, wechsel) = (wert("abstandDatum"), wert("abstandGleich"), wert("abstandWechsel"));
     let nach = (wechsel - datum).max(0.0);
-    (datum, nach, gleich, (DATUM_VOR - nach).max(0.0))
+    (datum, nach, gleich, (wert("abstandVorDatum") - nach).max(0.0))
 }
 
 /// Farben, Schrift, Korn, Rauschen und Abstände für ein Dokument, das den Chat schon enthält, als

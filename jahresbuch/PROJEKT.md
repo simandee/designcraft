@@ -79,7 +79,8 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
 - **Farben:** 4 Hauptfarben (Farbe Ich #E8493A Koralle, Farbe Sie #3554E0 Blau, Textfarbe #1E2A5A,
   Papier #F6F0E3); alle Varianten als Tonwert-Farbfelder in der Gruppe „Jahresbuch“
   (Ich/Sie · Blase, · Schatten, · Verzierung, Spalte · Schatten, Papier · Pille).
-- **Abstände** (im Menü als Regler, pt; Vorgaben vom User am 21.11.2026 verkleinert): Datum → erste
+- **Abstände** (im Menü als Regler, pt; Vorgaben vom User am 21.11.2026 verkleinert): letzte
+  Nachricht → Datum **20** (`vor_datum`; kann nicht kleiner werden als Wechsel − Datum), Datum → erste
   Nachricht **9,5**, Nachrichten derselben Person **12**, Wechsel zur anderen Person **14,5**
   (stil.json `abstand`). Technik: „Chat Sie“ hat Abstand davor = Datum-Abstand, danach = Wechsel −
   Datum, Abstand bei gleichen Formaten = gleiche Person. Foto-Serien: alle Reihen außer der letzten
