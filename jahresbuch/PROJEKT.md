@@ -16,6 +16,10 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 - **Keine Arbeit in andere Sessions auslagern** (außer der User will es ausdrücklich).
 - Rechner: **MacBook Pro mit Intel-Prozessor** (x86_64). Ein Neubau von DesignCraft dauert dort
   ~7–20 Min., ein `git pull` Sekunden. Immer dazusagen, ob nur `git pull` oder auch Neubau nötig ist.
+  **Schnellerer Neubau** (mit dem User am 21.11.2026 vereinbart, ab dem nächsten Update):
+  `CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_INCREMENTAL=true cargo build --release -p designcraft -p designcraft-cli`
+  (erstes Mal so lang wie sonst, danach schneller; Dauer beim zweiten Mal erfragen). Wünsche möglichst
+  sammeln und in einem Rutsch einbauen, damit nicht nach jeder Kleinigkeit neu gebaut werden muss.
 - Privat: Chat-Inhalte, Namen, Nummern nie in Websuchen oder externe Dienste. Die Chat-Daten liegen
   nur auf dem Mac, **nicht** in diesem Repository.
 
