@@ -48,6 +48,20 @@ BILD_B = SPALTE_B - BLASE_EINZUG - 7 - 6  # Breite eines Einzelbilds in der Blas
 EMOJI_PT, EMOJI_GROSS_PT = 9.5, 24
 BILD_MAX_H = 300  # höchstens so hoch wird ein Einzelbild (pt); höhere werden schmaler
 
+
+def seitenformat(breite, hoehe):
+    """Das Chat-Layout an ein anderes Seitenformat anpassen (es ist für A4 entworfen): Ränder,
+    Steg und Blasenbreite wachsen und schrumpfen mit der Seite, die Schriftgrößen bleiben."""
+    global SEITE_B, SEITE_H, RAND, STEG, SPALTE_B, BLASE_EINZUG, BILD_B, BILD_MAX_H
+    fx, fy = breite / 595.2755905511812, hoehe / 841.8897637795277
+    SEITE_B, SEITE_H = breite, hoehe
+    RAND = {"top": 60 * fy, "bottom": 77.1 * fy, "inside": 57.2 * fx, "outside": 57.2 * fx}
+    STEG = 32.2 * fx
+    SPALTE_B = (SEITE_B - RAND["inside"] - RAND["outside"] - STEG) / 2
+    BLASE_EINZUG = 60 * fx
+    BILD_B = SPALTE_B - BLASE_EINZUG - 7 - 6
+    BILD_MAX_H = 300 * fy
+
 URL_RE = re.compile(r"https?://\S+")
 
 # Höhe der Verzierungen (pt, inkl. Versatz), damit ihre Mitte auf Höhe der Großbuchstaben-Mitte sitzt
@@ -245,6 +259,8 @@ class Importer:
         # Zieldokument (document.inspect als JSON), wenn in ein bestehendes Buch importiert wird
         dok_pfad = getattr(args, "dokument", None)
         self.dok = json.load(open(dok_pfad, encoding="utf-8")) if dok_pfad else None
+        if self.dok and self.dok.get("settings", {}).get("pageWidth"):
+            seitenformat(float(self.dok["settings"]["pageWidth"]), float(self.dok["settings"]["pageHeight"]))
         self.parent_index = 0
         self.album_nr = 0
         self.rahmenfarbe = "Farbe Sie"
@@ -649,8 +665,9 @@ class Importer:
                 self.s("object.fill", swatch="Papier", ids=ids); self.s("object.stroke", swatch="[None]", ids=ids)
                 self.s("object.cornerOptions", shape="rounded", size=9, ids=ids)
                 self.rauschen(spread, box, "innen")
-            # Seitenzahl zweimal, leicht versetzt in beiden Farben übereinander gedruckt
-            for dx, farbe, multi in ((1.6, "Farbe Sie", False), (0, "Farbe Ich", True)):
+            # Seitenzahl (nur im eigenen Chat-Dokument; im Buch kommt sie von dessen Mustervorlage),
+            # zweimal leicht versetzt in beiden Farben übereinander gedruckt
+            for dx, farbe, multi in ([] if self.dok is not None else ((1.6, "Farbe Sie", False), (0, "Farbe Ich", True))):
                 nr = self.s("frame.create", spread=spread, content="text", text="\ue000",
                             rect=[seite_x + 200 + dx, SEITE_H - 52 + dx, seite_x + SEITE_B - 200 + dx, SEITE_H - 22 + dx])
                 self.s("text.select", story=f"${nr}.story", anchor=0, focus=3)
@@ -914,7 +931,9 @@ class Importer:
             self.parent_index = 0
             self.mustervorlage()
         elif not any(pa.get("label") == "J-Chat" for pa in self.dok.get("parents", [])):
-            s("layout.parents.new", prefix="J", name="Chat")
+            # Auf der ersten Mustervorlage des Buchs aufbauen: deren Seitenzahl & Co. zeigen sich mit.
+            eltern = self.dok.get("parents", [])
+            s("layout.parents.new", prefix="J", name="Chat", basedOn=eltern[0]["label"] if eltern else None)
             s("layout.marginsAndColumns", parent="J-Chat", margins=RAND, columns=2, gutter=STEG)
             self.parent_index = len(self.dok.get("parents", []))
             self.mustervorlage()
