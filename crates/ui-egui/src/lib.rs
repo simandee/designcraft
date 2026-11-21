@@ -36,6 +36,7 @@ mod new_document;
 mod object_control;
 pub mod object_style_dialog;
 pub mod package_dialog;
+pub mod jahresbuch_dialog;
 mod page_history;
 mod panel_docking;
 pub mod panels;

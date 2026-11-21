@@ -242,12 +242,25 @@ class Importer:
         self.absaetze = []
         self.steps = []
         self.deko_verlauf = []
+        # Zieldokument (document.inspect als JSON), wenn in ein bestehendes Buch importiert wird
+        dok_pfad = getattr(args, "dokument", None)
+        self.dok = json.load(open(dok_pfad, encoding="utf-8")) if dok_pfad else None
+        self.parent_index = 0
         self.album_nr = 0
         self.rahmenfarbe = "Farbe Sie"
         self._bbox = None
 
     # ---------------------------------------------------------------- Befehle
     def s(self, cmd, **p):
+        # In ein bestehendes Dokument: vorhandene Farbfelder und Formate bleiben, wie sie sind
+        # (so gehen eigene Anpassungen beim erneuten Import nicht verloren).
+        if self.dok is not None:
+            if cmd == "swatch.create" and p.get("name") in self.dok["swatches"]:
+                return None
+            if cmd == "style.paragraph.create" and p.get("name") in self.dok["paragraphStyles"]:
+                return None
+            if cmd == "style.character.create" and p.get("name") in self.dok["characterStyles"]:
+                return None
         self.steps.append({"command": cmd, "params": p})
         return len(self.steps) - 1
 
@@ -617,8 +630,7 @@ class Importer:
 
     def mustervorlage(self):
         """Riso-Spaltenboxen, Korn und Seitenzahl auf der Mustervorlage A (linke und rechte Seite)."""
-        korn = float(self.stil.get("korn", 0.35))
-        spread = {"kind": "parent", "index": 0}
+        spread = {"kind": "parent", "index": self.parent_index}
         for seite_x in (0.0, SEITE_B):
             links = seite_x == 0.0  # linke Seite: innen = rechts
             x0 = seite_x + (RAND["outside"] if links else RAND["inside"])
@@ -885,9 +897,9 @@ class Importer:
         return f"${g}.id" if g is not None else teile[0]
 
     # ---------------------------------------------------------------- Gesamtablauf
-    def skript(self):
+    def einrichtung(self):
+        """Farbfelder, Formate und Chat-Mustervorlage."""
         s = self.s
-        s("file.new", preset="A4", pages=1, facingPages=True, columns=2, gutter=STEG, margins=RAND, title="Jahresbuch – Chat")
         for name, farbe in self.farben():
             s("swatch.create", name=name, color=farbe)
         # Abgeleitete Varianten als Tonwert-Farbfelder: folgen ihrer Hauptfarbe, einzeln anpassbar
@@ -895,18 +907,22 @@ class Importer:
         for name, basis, ton in VARIANTEN:
             s("swatch.create", name=name, base=basis, tint=self.stil.get("tonwerte", {}).get(name, ton))
             varianten.append(name)
-        s("swatch.newColorGroup", name="Jahresbuch", swatches=[n for n, _ in self.farben()] + varianten)
+        if self.dok is None or "Farbe Ich" not in self.dok["swatches"]:
+            s("swatch.newColorGroup", name="Jahresbuch", swatches=[n for n, _ in self.farben()] + varianten)
         self.formate()
-        self.mustervorlage()
+        if self.dok is None:
+            self.parent_index = 0
+            self.mustervorlage()
+        elif not any(pa.get("label") == "J-Chat" for pa in self.dok.get("parents", [])):
+            s("layout.parents.new", prefix="J", name="Chat")
+            s("layout.marginsAndColumns", parent="J-Chat", margins=RAND, columns=2, gutter=STEG)
+            self.parent_index = len(self.dok.get("parents", []))
+            self.mustervorlage()
 
+    def inhalt(self, story):
+        """Den Chat-Text in `story` setzen, formatieren und Bilder, Emojis und Icons verankern."""
+        s = self.s
         text = "\n".join(a.inhalt for a in self.absaetze)
-        x0 = RAND["outside"] if False else RAND["inside"]  # Seite 1 ist eine rechte Seite: innen links
-        spalte1 = [x0, RAND["top"], x0 + SPALTE_B, SEITE_H - RAND["bottom"]]
-        spalte2 = [x0 + SPALTE_B + STEG, RAND["top"], x0 + 2 * SPALTE_B + STEG, SEITE_H - RAND["bottom"]]
-        f = s("frame.create", spread=0, rect=spalte1, content="text", text=text)
-        story = f"${f}.story"
-
-        # Formate anwenden (Byte-Positionen in UTF-8)
         def b(n):
             return len(text[:n].encode())
         pos = 0
@@ -923,20 +939,43 @@ class Importer:
                 p += len(t)
             einfuegen += [(pos + k, obj) for k, obj in a.objekte]
             pos += len(inhalt) + 1
-
         # Objekte von hinten nach vorne verankern, damit vordere Positionen gültig bleiben
         for k, obj in sorted(einfuegen, key=lambda x: x[0], reverse=True):
             ref = self.objekt_bauen(obj)
             s("text.select", story=story, anchor=b(k), focus=b(k + 1))
             s("text.delete")
             s("anchored.insert", ids=[ref], story=story, pos=b(k), position="inline", yOffset=obj.get("y", -1.0))
+        return text
 
+    def schreiben(self, pfad, schritte):
+        os.makedirs(os.path.dirname(os.path.abspath(pfad)) or ".", exist_ok=True)
+        with open(pfad, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(json.dumps(x, ensure_ascii=False) for x in schritte))
+
+    def skript(self):
+        s = self.s
+        if self.dok is not None:
+            # Ins bestehende Buch: zwei Skripte. Die Einrichtung läuft zuerst; dann setzt DesignCraft
+            # den Text in den gewählten (oder neu angelegten) Rahmen, Platzhalter "__STORY__".
+            self.einrichtung()
+            einrichtung, self.steps = self.steps, []
+            text = "\n".join(a.inhalt for a in self.absaetze)
+            s("story.setText", story="__STORY__", text=text)
+            self.inhalt("__STORY__")
+            self.schreiben(self.a.einrichtung_ausgabe, einrichtung)
+            self.schreiben(self.a.ausgabe, self.steps)
+            return len(einrichtung) + len(self.steps)
+        s("file.new", preset="A4", pages=1, facingPages=True, columns=2, gutter=STEG, margins=RAND, title="Jahresbuch – Chat")
+        self.einrichtung()
+        text = "\n".join(a.inhalt for a in self.absaetze)
+        x0 = RAND["inside"]  # Seite 1 ist eine rechte Seite: innen links
+        spalte1 = [x0, RAND["top"], x0 + SPALTE_B, SEITE_H - RAND["bottom"]]
+        spalte2 = [x0 + SPALTE_B + STEG, RAND["top"], x0 + 2 * SPALTE_B + STEG, SEITE_H - RAND["bottom"]]
+        f = s("frame.create", spread=0, rect=spalte1, content="text", text=text)
+        self.inhalt(f"${f}.story")
         # Rahmen verketten: zweite Spalte, dann so viele Seiten wie nötig
         s("text.thread", **{"from": f"${f}.id"}, rect=spalte2, spread=0, autoflow=True)
-
-        os.makedirs(os.path.dirname(os.path.abspath(self.a.ausgabe)) or ".", exist_ok=True)
-        with open(self.a.ausgabe, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(json.dumps(x, ensure_ascii=False) for x in self.steps))
+        self.schreiben(self.a.ausgabe, self.steps)
         return len(self.steps)
 
 
@@ -946,6 +985,8 @@ def main():
     ap.add_argument("--stil", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "stil.json"))
     ap.add_argument("--schrift", help='Schrift für den Chat, z. B. "Space Grotesk" (Standard) oder "Work Sans"')
     ap.add_argument("--von"); ap.add_argument("--bis"); ap.add_argument("--emoji-font"); ap.add_argument("--arbeitsordner")
+    ap.add_argument("--dokument", help="Ins bestehende Dokument: document.inspect als JSON-Datei (DesignCraft-Menü Jahresbuch)")
+    ap.add_argument("--einrichtung-ausgabe", help="mit --dokument: Datei für das Einrichtungs-Skript")
     args = ap.parse_args()
     imp = Importer(args)
     imp.aufbauen()

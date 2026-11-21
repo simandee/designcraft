@@ -3338,6 +3338,7 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
         crate::effects_dialog::ID => crate::i18n::tr(&app.ui.language, "Effects"),
         crate::export_batch_dialog::ID => crate::i18n::tr(&app.ui.language, "Export Layouts and Versions"),
         crate::package_dialog::ID => crate::i18n::tr(&app.ui.language, "Package"),
+        crate::jahresbuch_dialog::ID => "Jahresbuch: WhatsApp-Chat einfließen lassen",
         crate::package_dialog::INSTRUCTIONS => crate::i18n::tr(&app.ui.language, "Printing Instructions"),
         crate::object_style_dialog::ID => crate::i18n::tr(&app.ui.language, crate::object_style_dialog::title(&d)),
         id => match id.strip_prefix("cmd:").and_then(designcraft_engine::find_command) {
@@ -3364,6 +3365,7 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
             crate::export_batch_dialog::ID => 660.0,
             "colorPicker" => 580.0,
             crate::package_dialog::ID => 720.0,
+            crate::jahresbuch_dialog::ID => 620.0,
             crate::package_dialog::INSTRUCTIONS => 520.0,
             crate::object_style_dialog::ID => 760.0,
             _ => 640.0,
@@ -3711,6 +3713,7 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
                     crate::effects_dialog::ID => crate::effects_dialog::show(app, ui, &mut d),
                     crate::export_batch_dialog::ID => crate::export_batch_dialog::show(app, ui, &mut d),
                     crate::package_dialog::ID => crate::package_dialog::show(app, ui, &mut d),
+                    crate::jahresbuch_dialog::ID => crate::jahresbuch_dialog::show(app, ui, &mut d),
                     crate::package_dialog::INSTRUCTIONS => crate::package_dialog::show_instructions(app, ui, &mut d),
                     crate::object_style_dialog::ID => crate::object_style_dialog::show(app, ui, &mut d),
                     "preferences" => preferences(app, ui, &mut d, body_height),
@@ -4216,6 +4219,7 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
             "newDocument" => format!("  {}  ", crate::i18n::tr(&app.ui.language, "Create")),
             crate::export_batch_dialog::ID => format!("  {}  ", crate::i18n::tr(&app.ui.language, "Export…")),
             crate::package_dialog::ID => crate::i18n::tr(&app.ui.language, "Package…").to_string(),
+            crate::jahresbuch_dialog::ID => "  Chat einfließen lassen  ".to_string(),
             crate::package_dialog::INSTRUCTIONS => crate::i18n::tr(&app.ui.language, "Continue").to_string(),
             _ => crate::i18n::tr(&app.ui.language, "  OK  ").to_string(),
         };
@@ -5714,6 +5718,17 @@ fn confirm_part6(app: &mut DesignApp, d: Dialog) -> Result<Value, String> {
         "alert" => Ok(Value::Null),
         crate::effects_dialog::ID => crate::effects_dialog::confirm(app, &d),
         crate::export_batch_dialog::ID => crate::export_batch_dialog::confirm(app, &d),
+        crate::jahresbuch_dialog::ID => {
+            let r = crate::jahresbuch_dialog::confirm(app, &d);
+            // Fehlgeschlagen: das Fenster bleibt mit seinen Einstellungen offen.
+            if let Err(e) = &r
+                && app.ui.dialog.is_none()
+            {
+                app.status(e.clone());
+                app.ui.dialog = Some(d);
+            }
+            r
+        }
         crate::package_dialog::ID | crate::package_dialog::INSTRUCTIONS => {
             let r = if d.id == crate::package_dialog::ID {
                 crate::package_dialog::confirm(app, &d)

@@ -22,7 +22,21 @@ Deine Chats und Fotos liegen **nicht** hier, sondern nur auf deinem Mac.
 - die Schriften **Space Grotesk** und **Fraunces** (kostenlos bei Google Fonts)
 - den WhatsApp-Export als JSON samt Medienordner
 
-## Benutzen
+## Benutzen (in DesignCraft)
+
+1. Dein Buch öffnen.
+2. Einen **leeren Textrahmen** markieren, in dem der Chat beginnen soll (ohne Markierung kommen
+   neue Chat-Seiten ans Ende).
+3. Menü **Jahresbuch ▸ WhatsApp-Chat einfließen lassen …**: Export, Medienordner und Zeitraum
+   wählen, Farben, Schrift, Korn und Rauschen einstellen, **Chat einfließen lassen**.
+
+Der Chat fließt in den Rahmen und durch die damit verketteten Rahmen weiter; passt er nicht,
+kommen Seiten mit der Mustervorlage **J-Chat** (zwei Spalten-Boxen) am Ende dazu. Danach ganz
+normal weiterarbeiten: Seiten dazwischenschieben, Verkettung lösen und neu ansetzen – der Text
+fließt nach. „Nur Gestaltung aufs Dokument anwenden“ ändert Farben, Schrift, Korn und Rauschen
+eines Buchs, das den Chat schon enthält.
+
+## Benutzen (Terminal, eigenes Dokument)
 
 ```bash
 python3 designcraft_import.py EXPORT.json MEDIENORDNER Chat_2021.jsonl --von 2021-01-01 --bis 2021-12-31
