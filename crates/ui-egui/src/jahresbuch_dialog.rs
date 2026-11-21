@@ -547,10 +547,33 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
             (rahmen, story)
         }
         None => {
+            // Eine neue Chat-Seite: ein Rahmen je Spalte, verkettet.
             let (spread, spalten) = chat_seite_anhaengen(app)?;
             let rect = spalten.first().cloned().ok_or("Chat-Seite ohne Spalten")?;
             let f = app.run("frame.create", json!({"spread": spread, "rect": rect, "content": "text"}))?;
-            (f["id"].as_u64().ok_or("kein Rahmen")?, f["story"].as_u64().ok_or("kein Text")?)
+            let erster = f["id"].as_u64().ok_or("kein Rahmen")?;
+            let mut von = erster;
+            for rect in spalten.iter().skip(1) {
+                let r = app.run("text.thread", json!({"from": von, "rect": rect, "spread": spread}))?;
+                von = r["to"].as_u64().unwrap_or(von);
+            }
+            // Beim Verketten leerer Rahmen bekommt der Text eine neue Nummer.
+            let story = app.run("story.get", json!({"story": f["story"]})).ok().and_then(|v| v["id"].as_u64());
+            let story = match story {
+                Some(st) => st,
+                None => {
+                    let inspect = app.session.execute("document.inspect", &json!({})).map_err(|e| e.to_string())?;
+                    inspect["spreads"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .flat_map(|sp| sp["items"].as_array().into_iter().flatten())
+                        .find(|it| it["id"].as_u64() == Some(erster))
+                        .and_then(|it| it["story"].as_u64())
+                        .ok_or("kein Text")?
+                }
+            };
+            (erster, story)
         }
     };
     // Der Text kann schon weitere verkettete Rahmen haben: weiter geht es nach dem letzten.
@@ -603,6 +626,32 @@ mod tests {
         let story = doc["spreads"][0]["items"].as_array().unwrap().iter().find(|i| i["id"] == links["id"]).unwrap()["story"].clone();
         let rahmen: Vec<Value> = app.run("story.get", json!({"story": story})).unwrap()["frames"].as_array().unwrap().clone();
         assert_eq!(rahmen.get(1), Some(&rechts), "nach dem linken Rahmen kommt der rechte, nicht die neuen Seiten: {rahmen:?}");
+    }
+
+    /// Ohne markierten Rahmen: die neue Chat-Seite hat in beiden Spalten verkettete Rahmen, der
+    /// Chat füllt erst beide und läuft dann auf weitere Seiten.
+    #[test]
+    fn neue_chat_seite_hat_beide_spalten() {
+        let (Ok(export), Ok(medien)) = (std::env::var("JAHRESBUCH_TEST_EXPORT"), std::env::var("JAHRESBUCH_TEST_MEDIEN")) else { return };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"preset": "A4", "pages": 1, "facingPages": true})).unwrap();
+        open(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        for (k, v) in [("export", export.as_str()), ("medien", medien.as_str()), ("von", "2026-11-01"), ("bis", "2026-11-30"), ("python", "python3")] {
+            d.fields.insert(k.into(), json!(v));
+        }
+        confirm(&mut app, &d).unwrap();
+        let doc = app.session.execute("document.inspect", &json!({})).unwrap();
+        // Die ersten beiden Rahmen des Chats: nebeneinander auf derselben Seite (zwei Spalten),
+        // nicht der zweite schon auf der nächsten Seite.
+        let rahmen: Vec<&Value> = doc["spreads"].as_array().unwrap().iter().flat_map(|sp| sp["items"].as_array().unwrap()).collect();
+        let story = rahmen.iter().find(|i| i["story"].is_u64()).unwrap()["story"].clone();
+        let kette: Vec<Value> = app.run("story.get", json!({"story": story})).unwrap()["frames"].as_array().unwrap().clone();
+        assert!(kette.len() > 2, "der Chat läuft über mehrere Seiten");
+        let x0 = |id: &Value| rahmen.iter().find(|i| i["id"] == *id).unwrap()["bounds"][0].as_f64().unwrap();
+        let seite_b = doc["spreads"][1]["pages"][0]["bounds"].as_array().map(|b| b[2].as_f64().unwrap() - b[0].as_f64().unwrap()).unwrap_or(595.0);
+        let abstand = x0(&kette[1]) - x0(&kette[0]);
+        assert!(abstand > 0.0 && abstand < seite_b / 2.0, "zweite Spalte derselben Seite: {abstand} pt weiter rechts");
     }
 
     fn gleiche_person(app: &DesignApp) -> Option<f64> {
