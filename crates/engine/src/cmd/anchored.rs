@@ -40,6 +40,24 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             release
         ),
+        cmd!(
+            "anchored.resize",
+            "Resize Anchored Object",
+            [],
+            None,
+            "{story?, index? (default: the object at the insertion point), width?, height? (pt; one of them keeps the proportions, both set that size)} — scales the object and its content; stroke weights stay, the text reflows around the new size",
+            has_doc,
+            resize
+        ),
+        cmd!(
+            "anchored.delete",
+            "Delete Anchored Object",
+            [],
+            None,
+            "{story?, index? (default: the object at the insertion point)} — takes the object out of the text and deletes it",
+            has_doc,
+            delete
+        ),
         cmd!(query "anchored.list", "Anchored Objects", [], None, "{story?} → [{story, index, pos, position, size}]", has_doc, |s, p| {
             let d = &s.doc()?.doc;
             let only = p.get("story").and_then(Value::as_u64).map(StoryId);
@@ -205,6 +223,61 @@ fn options(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// Smallest and largest side an anchored object can be resized to (pt).
+const MIN_SIDE: f64 = 4.0;
+const MAX_SIDE: f64 = 10_000.0;
+
+fn resize(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "anchored.resize";
+    let (sid, k) = object_ref(s, p, CMD)?;
+    let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+    let (w0, h0) = cur.size();
+    if !(w0 > 1e-6 && h0 > 1e-6) {
+        return Err(bad(CMD, "the object has no size"));
+    }
+    let side = |key: &str| -> Result<Option<f64>> {
+        match p.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(v) => match v.as_f64() {
+                Some(x) if x.is_finite() && (MIN_SIDE..=MAX_SIDE).contains(&x) => Ok(Some(x)),
+                _ => Err(bad(CMD, format!("{key}: {MIN_SIDE} to {MAX_SIDE} pt"))),
+            },
+        }
+    };
+    let (sx, sy) = match (side("width")?, side("height")?) {
+        (Some(w), Some(h)) => (w / w0, h / h0),
+        (Some(w), None) => (w / w0, w / w0),
+        (None, Some(h)) => (h / h0, h / h0),
+        (None, None) => return Err(bad(CMD, "give width or height")),
+    };
+    let m = Affine::scale_non_uniform(sx, sy);
+    let k_mean = (sx * sy).sqrt();
+    s.edit(|d, _| {
+        let st = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
+        let o = Arc::make_mut(st.objects.get_mut(k).ok_or_else(|| bad(CMD, "no such anchored object"))?);
+        // About its top-left corner, which stays at the origin of the object's space.
+        crate::cmd::object::scale_item(&mut o.item, m, k_mean, false);
+        let b = o.item.bounds();
+        o.item.xf = Affine::translate((-b.x0, -b.y0)) * o.item.xf;
+        let size = o.size();
+        st.rev = st.rev.wrapping_add(1);
+        Ok(json!({"story": sid.0, "index": k, "size": [size.0, size.1]}))
+    })
+}
+
+fn delete(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "anchored.delete";
+    let (sid, k) = object_ref(s, p, CMD)?;
+    let pos = s.doc()?.doc.story(sid).and_then(|st| st.text.match_indices(OBJECT_MARK).nth(k).map(|(i, _)| i)).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+    s.edit(|d, sel| {
+        let st = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
+        st.delete(pos..pos + OBJECT_MARK.len_utf8());
+        st.rev = st.rev.wrapping_add(1);
+        *sel = designcraft_doc::Selection::default();
+        Ok(json!({"story": sid.0, "pos": pos}))
+    })
+}
+
 fn release(s: &mut Session, p: &Value) -> Result<Value> {
     let (sid, k) = object_ref(s, p, "anchored.release")?;
     let d0 = s.doc()?.doc.clone();
@@ -249,6 +322,47 @@ fn release(s: &mut Session, p: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Resizing an object in the text keeps its proportions (one side given), keeps the stroke
+    /// weight, and the text after it moves with its new width.
+    #[test]
+    fn resize_scales_the_object_and_the_text_follows() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect": [72, 72, 400, 400], "content": "text", "text": "Before after and more words."})).unwrap();
+        let sid = s.doc().unwrap().doc.item(ItemId(r["id"].as_u64().unwrap())).unwrap().text_frame().unwrap().story;
+        let r = s.execute("frame.create", &json!({"rect": [450, 450, 490, 470]})).unwrap();
+        s.execute("object.stroke", &json!({"ids": [r["id"]], "swatch": "[Black]", "weight": 2})).unwrap();
+        s.execute("anchored.insert", &json!({"ids": [r["id"]], "story": sid.0, "pos": 7})).unwrap();
+        let after_x = |s: &Session| {
+            let d = s.doc().unwrap().doc.clone();
+            let cs = s.cache.get(&d, sid, None);
+            let ft = &cs.frames[0];
+            ft.lines[ft.objects[0].line].glyphs.iter().find(|g| g.byte == 7 + OBJECT_MARK.len_utf8()).unwrap().x
+        };
+        let before = after_x(&s);
+        let out = s.execute("anchored.resize", &json!({"story": sid.0, "index": 0, "width": 80})).unwrap();
+        let st = s.doc().unwrap().doc.story(sid).unwrap().clone();
+        let (w, h) = st.objects[0].size();
+        assert!((w / h - 2.0).abs() < 1e-6 && w > 40.0, "proportions kept: {w} × {h}");
+        assert_eq!(out["size"][0].as_f64().map(f64::round), Some(w.round()));
+        assert!(after_x(&s) > before, "the text after it moved right");
+        // Wider and taller on screen, but the stroke looks as thick as before.
+        let it = &st.objects[0].item;
+        let shown = it.stroke.weight * (it.xf.determinant().abs().sqrt());
+        assert!((shown - 2.0).abs() < 1e-6, "stroke weight kept: {shown}");
+        assert!(s.execute("anchored.resize", &json!({"story": sid.0, "index": 0, "width": 0.5})).is_err(), "too small");
+        assert!(s.execute("anchored.resize", &json!({"story": sid.0, "index": 0})).is_err(), "no size given");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!((s.doc().unwrap().doc.story(sid).unwrap().objects[0].size().0 - 40.0).abs() < 1e-6, "one undo step back");
+        // Deleting it takes it and its mark out of the text; the words stay.
+        s.execute("anchored.delete", &json!({"story": sid.0, "index": 0})).unwrap();
+        let st = s.doc().unwrap().doc.story(sid).unwrap().clone();
+        assert!(st.objects.is_empty() && !st.text.contains(OBJECT_MARK));
+        assert!(st.text.starts_with("Before after"), "{:?}", st.text);
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.story(sid).unwrap().objects.len(), 1, "undo brings it back");
+    }
 
     #[test]
     fn inline_object_flows_with_text_and_releases() {

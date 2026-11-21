@@ -126,19 +126,24 @@ pub fn open(app: &mut DesignApp) -> Result<(), String> {
     oeffnen(app, ID)
 }
 
-/// Das Gestaltungsfenster öffnen; nur in einem Dokument, das schon einen Chat enthält.
+/// Das Gestaltungsfenster öffnen. Ohne Chat im Dokument legt es die Gestaltung für den nächsten
+/// eingefügten Chat fest (ohne Vorschau).
 pub fn open_gestaltung(app: &mut DesignApp) -> Result<(), String> {
-    let hat_chat = app.session.execute("document.inspect", &json!({})).ok().is_some_and(|i| {
-        i["swatches"].as_array().is_some_and(|a| a.iter().any(|v| v == "Farbe Ich"))
-    });
-    if app.session.active().is_some() && !hat_chat {
-        return Err("Im Dokument ist noch kein Chat – erst Jahresbuch ▸ WhatsApp-Chat einfügen …".into());
+    oeffnen(app, GESTALTUNG_ID)?;
+    let hat_chat = hat_chat(app);
+    if let Some(d) = app.ui.dialog.as_mut() {
+        d.fields.insert("hatChat".into(), json!(hat_chat));
     }
-    oeffnen(app, GESTALTUNG_ID)
+    Ok(())
+}
+
+/// Das offene Dokument enthält schon einen Chat (seine Farbfelder sind da).
+fn hat_chat(app: &mut DesignApp) -> bool {
+    app.session.execute("document.inspect", &json!({})).ok().is_some_and(|i| i["swatches"].as_array().is_some_and(|a| a.iter().any(|v| v == "Farbe Ich")))
 }
 
 fn oeffnen(app: &mut DesignApp, id: &str) -> Result<(), String> {
-    if app.session.active().is_none() {
+    if id == ID && app.session.active().is_none() {
         return Err("Zuerst das Buch öffnen (oder ein neues Dokument anlegen).".into());
     }
     let stil = lies_stil();
@@ -298,10 +303,16 @@ fn show_gestaltung(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     });
 
     ui.add_space(6.0);
+    if !d.b("hatChat") {
+        ui.label(
+            egui::RichText::new("In diesem Dokument ist noch kein Chat. OK speichert die Gestaltung für den nächsten Chat, den du einfügst.").small(),
+        );
+    }
+    let hat = d.b("hatChat");
     ui.horizontal(|ui| {
         let mut an = d.b("vorschau");
         if ui
-            .checkbox(&mut an, "Vorschau")
+            .add_enabled(hat, egui::Checkbox::new(&mut an, "Vorschau"))
             .on_hover_text("Zeigt die Änderungen sofort im Chat dieses Dokuments. OK übernimmt sie, Abbrechen nimmt alles zurück.")
             .changed()
         {
@@ -315,6 +326,10 @@ fn show_gestaltung(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
 /// Rückgängig-Schritt), die Einstellungen für spätere Chats merken.
 pub fn confirm_gestaltung(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
     speichere_stil(d);
+    if !d.b("hatChat") {
+        app.status("Jahresbuch: Gestaltung gespeichert; sie gilt für den nächsten eingefügten Chat.");
+        return Ok(Value::Null);
+    }
     gestaltung_uebernehmen(app, d)?;
     app.status("Jahresbuch: Gestaltung übernommen.");
     Ok(Value::Null)
@@ -699,7 +714,8 @@ mod tests {
     fn gestaltung_ok_aendert_nur_die_gestaltung() {
         let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
         app.run("file.new", json!({"preset": "A4", "pages": 1})).unwrap();
-        assert!(open_gestaltung(&mut app).is_err(), "ohne Chat gibt es nichts zu gestalten");
+        open_gestaltung(&mut app).unwrap();
+        assert!(!app.ui.dialog.take().unwrap().b("hatChat"), "ohne Chat: nur für den nächsten Chat, ohne Vorschau");
         app.run("swatch.create", json!({"name": "Farbe Ich", "color": "#E8493A"})).unwrap();
         app.run("style.paragraph.create", json!({"name": "Chat Sie", "para": {"sameParaStyleSpacing": 12}})).unwrap();
         let seiten = app.session.execute("document.inspect", &json!({})).unwrap()["pageCount"].clone();

@@ -73,8 +73,9 @@ pub(super) fn draw_tool_overlays(app: &mut DesignApp, painter: &egui::Painter, x
                 let pts = vec![c + vec2(0.0, -h), c + vec2(h, 0.0), c + vec2(0.0, h), c + vec2(-h, 0.0)];
                 painter.add(egui::Shape::convex_polygon(pts, tok.live_corner, Stroke::new(1.0, sel_color)));
             }
-            Overlay::PageHandles(r) => {
-                // The Page tool's selected page: outline and eight handles, as InDesign draws them.
+            // The Page tool's selected page, or an object in text selected with the Selection
+            // tool: outline and eight handles, as InDesign draws them.
+            Overlay::PageHandles(r) | Overlay::InlineHandles(r) => {
                 let r = xf.rect(r);
                 let col = Color32::from_rgb(79, 153, 255);
                 painter.rect_stroke(r, 0.0, Stroke::new(1.0, col), StrokeKind::Middle);

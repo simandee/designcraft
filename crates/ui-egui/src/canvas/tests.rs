@@ -3485,3 +3485,63 @@ fn leaving_parent_editing_for_the_left_page_of_a_spread_keeps_that_page_selected
     h.run_steps(3);
     assert_eq!(current_page(h.state()), Some(1));
 }
+
+/// An object in text behaves like any object for the Selection tool: a click on it shows its
+/// handles, dragging a corner outwards makes it bigger in one undo step, and the text moves
+/// along.
+#[test]
+fn the_selection_tool_resizes_an_object_in_text() {
+    let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({})).unwrap();
+    let f = app.run("frame.create", json!({"rect": [100, 100, 500, 400], "content": "text", "text": "Hi there and more words"})).unwrap();
+    let b = app.run("frame.create", json!({"rect": [600, 600, 660, 630]})).unwrap();
+    app.run("anchored.insert", json!({"ids": [b["id"]], "story": f["story"], "pos": 3})).unwrap();
+    app.session.set_tool("selection");
+    let mut h = harness(app);
+    let sid = designcraft_doc::StoryId(f["story"].as_u64().unwrap());
+    let width = |h: &Harness<'_, DesignApp>| h.state().session.doc().unwrap().doc.story(sid).unwrap().objects[0].size().0;
+    let shown = |h: &mut Harness<'_, DesignApp>| {
+        let vi = h.state().view_info();
+        h.state_mut().session.overlays(vi).into_iter().find_map(|o| match o {
+            designcraft_tools::Overlay::InlineHandles(r) => Some(r),
+            _ => None,
+        })
+    };
+    let screen = |h: &Harness<'_, DesignApp>, p: Point| {
+        let app = h.state();
+        Xf::new(app.canvas_rect.unwrap(), app.view().unwrap()).to_screen(p)
+    };
+    // Where it shows: find it the way the tool does.
+    let r = {
+        let app = h.state();
+        let st = app.session.active().unwrap();
+        let layout = CanvasLayout::new(&st.doc, false);
+        let cx = designcraft_tools::ToolContext {
+            doc: &st.doc,
+            selection: &st.selection,
+            cache: &app.session.cache,
+            layout: &layout,
+            zoom: 1.0,
+            layer: st.doc.default_layer(),
+            snap: designcraft_tools::SnapView::OFF,
+            unit: designcraft_geom::Unit::Points,
+            stroke_in_front: false,
+            loaded: None,
+        };
+        designcraft_tools::inline::bounds(&cx, designcraft_tools::inline::Inline { story: sid, index: 0 }).unwrap()
+    };
+    let c = screen(&h, r.center());
+    h.hover_at(c);
+    h.step();
+    h.event(egui::Event::PointerButton { pos: c, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+    h.step();
+    h.event(egui::Event::PointerButton { pos: c, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+    h.run_steps(3);
+    assert!(shown(&mut h).is_some(), "a click on it shows its handles");
+    assert!(h.state().session.active().unwrap().selection.items.is_empty(), "the frame isn't selected instead");
+    let corner = screen(&h, Point::new(r.x1, r.y1));
+    drag(&mut h, corner, corner + vec2(60.0, 20.0));
+    assert!(width(&h) > 60.0 + 1.0, "bigger: {}", width(&h));
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    assert!((width(&h) - 60.0).abs() < 1e-6, "one undo step back: {}", width(&h));
+}

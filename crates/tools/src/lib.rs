@@ -14,6 +14,7 @@ pub mod catalog;
 mod corners;
 mod frame;
 mod gradient;
+pub mod inline;
 pub mod layout;
 mod nav;
 pub use nav::{LOCK_OFFSET_PX, PIN_OFFSET_PX, PLACE_DRAG_MIN};
@@ -424,6 +425,9 @@ pub enum Overlay {
     LiveCornerDiamond(Point),
     /// A page selected with the Page tool (canvas rect): its outline and eight handles.
     PageHandles(Rect),
+    /// An object anchored in text, selected with the Selection tool (canvas rect): its bounds and
+    /// eight handles.
+    InlineHandles(Rect),
     /// A small tag whose bottom-left is at `p` (the Page tool's liquid page rule; English, the UI
     /// translates it).
     Tag {

@@ -56,13 +56,22 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
   **Rauschen** (`shadingNoise`: Papier-Körnung als Textur, dunkel auf der Fläche, hell auf dem
   Schatten; unter dem Text, nur bei High Quality Display; noch ohne Feld im Absatzschattierungs-Dialog).
 - Überlappende Absatzflächen in Textreihenfolge (spätere liegen oben).
+- **Objekte im Text wie normale Objekte** (User-Wunsch 21.11.2026: Chat-Fotos „wie normale
+  Bild-Objekte“): Auswahlwerkzeug-Klick auf ein verankertes Objekt (z. B. Chat-Foto) wählt es aus
+  (Rahmen mit 8 Anfassern), Ziehen an einem Anfasser skaliert es mit Inhalt **proportional**
+  (Gegenseite bleibt, Konturen bleiben gleich dick, Text/Blase passen sich an), Entf löscht es,
+  Esc oder Klick daneben hebt die Auswahl auf. Befehle `anchored.resize {story,index,width|height}`
+  und `anchored.delete`; Werkzeug-Code `crates/tools/src/inline.rs` + `select.rs`.
+  Noch **nicht**: Beschneiden/Verschieben des Bildes im Rahmen, Maße im Eigenschaften-Panel,
+  Mehrfachauswahl, Kopieren.
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
   nicht – sonst ruckelt das Tippen. Export/Druck immer mit Korn.
 - **Menü „Jahresbuch“** (`crates/ui-egui/src/jahresbuch_dialog.rs`), zwei Punkte (User-Wunsch 21.11.2026):
   **„WhatsApp-Chat einfügen …“** (Export, Medienordner, Zeitraum; Knopf „Chat einfügen“) und
   **„Chat-Gestaltung …“** (4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel und Abstände,
-  Haken „Vorschau“, OK übernimmt, Abbrechen nimmt zurück; nur wenn das Dokument schon einen Chat hat).
+  Haken „Vorschau“, OK übernimmt, Abbrechen nimmt zurück; ohne Chat im Dokument speichert OK nur die
+  Einstellungen für den nächsten Chat, Vorschau ausgegraut).
   Das Einfügen ruft `jahresbuch/designcraft_import.py` auf
   (Python aus `~/WhatsApp-Export/.venv`), führt dessen Skripte im **offenen Buch** aus:
   Einrichtung (Farbfelder, Formate, Mustervorlage **J-Chat**, basiert auf der ersten Mustervorlage
@@ -139,8 +148,6 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
    1 hoch seitenfüllend · 2×2 hoch · 1 randlos; Seitenzahl blau/bei randlos weiß), dann freie Texte.
 5. Neue offizielle DesignCraft-Versionen übernehmen: **nur auf Wunsch** des Users (`upstream` mergen).
 6. Später evtl.: Erweiterungen dem DesignCraft-Projekt vorschlagen (entscheidet der User).
-7. **Gesammelter Wunsch:** Chat-Fotos als bearbeitbare Objekte (Größe ändern, damit ein Bild noch
-   ans Ende einer Spalte passt statt Leerraum zu lassen). Noch nicht umgesetzt.
 8. Bekannte Kleinigkeit: Ein in einer Spalte zu hohes Einzelbild rutscht samt Datum in die nächste
    Spalte und lässt Leerraum.
 

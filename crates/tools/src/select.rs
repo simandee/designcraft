@@ -17,6 +17,10 @@
 //! steps its shape (Shift+Alt: every corner). Escape or clicking empty canvas ends corner editing.
 //! A selected placed graphic shows its own bounding box: its handles resize the graphic (Shift keeps
 //! its proportions, Alt from its centre) and leave the frame as it is.
+//!
+//! An object in text (anchored inline) is selected with a click like any object: its handles
+//! resize it with its content, keeping its proportions, and Delete takes it out of the text (see
+//! [`crate::inline`]).
 
 use designcraft_doc::{Content, Item, ItemId, SpreadRef};
 use designcraft_geom::{Affine, Point, Rect, Vec2};
@@ -29,6 +33,14 @@ use crate::{Action, Cursor, Gesture, Mods, Overlay, PointerEvent, PointerKind, S
 #[derive(Clone, Debug)]
 enum Drag {
     None,
+    /// A handle of a selected object in text being dragged: it resizes the object.
+    Inline {
+        object: crate::inline::Inline,
+        handle: usize,
+        /// Its canvas bounds and width (pt) when the drag began.
+        start: Rect,
+        width: f64,
+    },
     Pending {
         start: Point,
         hit: bool,
@@ -324,6 +336,8 @@ pub struct SelectionTool {
     loaded: Option<Loaded>,
     /// Frame whose live corners are being edited (diamonds shown).
     live: Option<ItemId>,
+    /// An object in text selected with a click (see [`crate::inline`]).
+    inline: Option<crate::inline::Inline>,
 }
 
 impl SelectionTool {
@@ -338,6 +352,7 @@ impl SelectionTool {
             anchor_release: None,
             loaded: None,
             live: None,
+            inline: None,
         }
     }
 
@@ -1252,7 +1267,66 @@ impl SelectionTool {
                 }
                 vec![Action::Preview("path.moveAnchors".into(), params)]
             }
-            Drag::None => vec![],
+            // Objects in text resize in `inline_pointer`.
+            Drag::None | Drag::Inline { .. } => vec![],
+        }
+    }
+}
+
+impl SelectionTool {
+    /// Where the selected object in text shows, while it is the selection (nothing else is
+    /// selected and the object is still there).
+    fn inline_shown(&self, cx: &ToolContext) -> Option<Rect> {
+        let o = self.inline?;
+        if !cx.selection.items.is_empty() || cx.selection.text.is_some() {
+            return None;
+        }
+        crate::inline::bounds(cx, o)
+    }
+
+    /// Objects in text: a press on a handle of the selected one starts resizing it, a press on one
+    /// selects it (and nothing else), any other press ends it and goes on as usual.
+    fn inline_pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Option<Vec<Action>> {
+        let p = ev.pos;
+        match ev.kind {
+            PointerKind::Down if ev.click_count() == 1 => {
+                if let Some(o) = self.inline
+                    && let Some(r) = self.inline_shown(cx)
+                    && let Some(handle) = crate::inline::handle_at(cx, r, p)
+                {
+                    let width = crate::inline::item(cx, o)?.bounds().width();
+                    self.drag = Drag::Inline { object: o, handle, start: r, width };
+                    return Some(vec![Action::Begin("Resize".into())]);
+                }
+                // Shift and Cmd clicks keep their usual meaning (add to the selection, select
+                // through); a plain click picks the object.
+                if !ev.mods.shift && !ev.mods.cmd
+                    && let Some((o, _)) = crate::inline::at(cx, p)
+                {
+                    self.inline = Some(o);
+                    self.drag = Drag::None;
+                    return Some(vec![Action::Exec("selection.set".into(), json!({"ids": []}))]);
+                }
+                self.inline = None;
+                None
+            }
+            PointerKind::Drag => match self.drag {
+                Drag::Inline { object, handle, start, width } => {
+                    let w = crate::inline::width_for(start, handle, p, width)?;
+                    Some(vec![Action::Preview(
+                        "anchored.resize".into(),
+                        json!({"story": object.story.0, "index": object.index, "width": w}),
+                    )])
+                }
+                _ => None,
+            },
+            PointerKind::Move => {
+                if let Some(r) = self.inline_shown(cx) {
+                    self.hover_handle = crate::inline::handle_at(cx, r, p);
+                }
+                None
+            }
+            _ => None,
         }
     }
 }
@@ -1272,6 +1346,11 @@ impl Tool for SelectionTool {
         }
         if !self.direct
             && let Some(actions) = self.thread_pointer(cx, ev)
+        {
+            return actions;
+        }
+        if !self.direct
+            && let Some(actions) = self.inline_pointer(cx, ev)
         {
             return actions;
         }
@@ -1324,7 +1403,8 @@ impl Tool for SelectionTool {
                         let points: Vec<_> = cx.selection.anchors.iter().copied().filter(|a| Some(*a) != anchor_release).collect();
                         vec![Action::Commit, Action::Exec("selection.set".into(), anchor_selection(cx, &points, true))]
                     }
-                    Drag::Move { .. }
+                    Drag::Inline { .. }
+                    | Drag::Move { .. }
                     | Drag::Resize { .. }
                     | Drag::ContentResize { .. }
                     | Drag::Anchor { .. }
@@ -1382,6 +1462,20 @@ impl Tool for SelectionTool {
     }
 
     fn key(&mut self, cx: &ToolContext, key: ToolKey, mods: Mods) -> Vec<Action> {
+        if let Some(o) = self.inline.filter(|_| cx.selection.items.is_empty()) {
+            match key {
+                ToolKey::Escape => {
+                    self.inline = None;
+                    return vec![Action::Handled];
+                }
+                // Delete takes the object out of the text, as Delete does with a selected object.
+                ToolKey::Delete | ToolKey::Backspace => {
+                    self.inline = None;
+                    return vec![Action::Exec("anchored.delete".into(), json!({"story": o.story.0, "index": o.index}))];
+                }
+                _ => {}
+            }
+        }
         if key == ToolKey::Escape && self.loaded.take().is_some() {
             // Unload; the selection stays. Cancel (no interaction runs) marks the key handled.
             self.drag = Drag::None;
@@ -1451,6 +1545,9 @@ impl Tool for SelectionTool {
             Drag::None | Drag::Bracket { .. } => brackets(cx),
             _ => vec![],
         };
+        if let Some(r) = self.inline_shown(cx) {
+            out.push(Overlay::InlineHandles(r));
+        }
         // The loaded text cursor places text: the frame's corners aren't edited meanwhile.
         if !self.direct && self.loaded.and_then(|l| l.resolve(cx.doc)).is_none() {
             if let Some(f) = self.live_corners(cx) {
@@ -1463,6 +1560,15 @@ impl Tool for SelectionTool {
     }
 
     fn cursor(&self, cx: &ToolContext, p: Point, _m: Mods) -> Cursor {
+        if let Drag::Inline { handle, .. } = self.drag {
+            return handle_cursor(handle);
+        }
+        if matches!(self.drag, Drag::None)
+            && let Some(r) = self.inline_shown(cx)
+            && let Some(h) = crate::inline::handle_at(cx, r, p)
+        {
+            return handle_cursor(h);
+        }
         if let Drag::Move { content: true, .. } = self.drag {
             return Cursor::HandGrab;
         }

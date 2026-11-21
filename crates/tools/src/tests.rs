@@ -2616,3 +2616,60 @@ fn place_gun_grid_preview_matches_the_release_on_a_rotated_spread() {
     let (Overlay::Marquee(first), Overlay::Marquee(second)) = (&shown[0], &shown[1]) else { panic!("{shown:?}") };
     assert!((first.x0 - second.x0).abs() < 1e-6, "{shown:?}");
 }
+
+/// A text frame with a 40 × 20 pt object in its text (after "Hi "): the document and the story.
+fn frame_with_inline_object() -> (Document, designcraft_doc::StoryId) {
+    let mut d = Document::new(&NewDocument::default());
+    let lid = d.default_layer();
+    let (_, sid) = d.add_text_frame(SpreadRef::Doc(0), Rect::new(100.0, 100.0, 400.0, 300.0), lid, "Hi there", ParaFormat::default()).unwrap();
+    let path = shapes::rectangle(Rect::new(0.0, 0.0, 40.0, 20.0));
+    let item = Item::new(ItemId(9_000), lid, Shape::Rectangle, path);
+    d.story_mut(sid).unwrap().insert_object(3, designcraft_doc::AnchoredObject::new(item, Default::default()));
+    (d, sid)
+}
+
+/// The Selection tool treats an object in text as an object: a click selects it (and nothing
+/// else) and shows its handles, dragging a corner handle resizes it with `anchored.resize`
+/// (bigger when dragged outwards), and a click on empty canvas lets it go.
+#[test]
+fn selection_tool_selects_and_resizes_an_object_in_text() {
+    let (d, sid) = frame_with_inline_object();
+    let (s, c, l) = (Selection::default(), Cache::new(), CanvasLayout::new(&d, false));
+    let cx = ctx(&d, &s, &c, &l);
+    let r = inline::bounds(&cx, inline::Inline { story: sid, index: 0 }).expect("the object shows in the frame");
+    let off = l.xf(SpreadRef::Doc(0)).translation();
+    assert!(r.x0 > 100.0 + off.x && r.y0 >= 100.0 + off.y - 1e-6, "inside the frame, after \"Hi \": {r:?}");
+    assert!((r.width() - 40.0).abs() < 1e-6 && (r.height() - 20.0).abs() < 1e-6, "{r:?}");
+    let mut t = create("selection");
+    let a = t.pointer(&cx, &PointerEvent::new(PointerKind::Down, r.center().x, r.center().y));
+    assert_eq!(a, vec![Action::Exec("selection.set".into(), serde_json::json!({"ids": []}))], "a click selects the object alone");
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Up, r.center().x, r.center().y));
+    assert!(t.overlays(&cx).contains(&Overlay::InlineHandles(r)), "its handles show");
+    // The bottom-right handle, dragged outwards.
+    assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Down, r.x1, r.y1)), vec![Action::Begin("Resize".into())]);
+    match t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, r.x1 + 40.0, r.y1 + 5.0)).as_slice() {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "anchored.resize");
+            assert_eq!((p["story"].as_u64(), p["index"].as_u64()), (Some(sid.0), Some(0)));
+            assert!(p["width"].as_f64().unwrap() > 40.0, "bigger: {p}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Up, r.x1 + 40.0, r.y1 + 5.0)), vec![Action::Commit]);
+    // Escape lets it go; so does a click elsewhere.
+    assert_eq!(t.key(&cx, ToolKey::Escape, Mods::default()), vec![Action::Handled]);
+    assert!(!t.overlays(&cx).iter().any(|o| matches!(o, Overlay::InlineHandles(_))));
+}
+
+/// Dragging a handle keeps the opposite side and the proportions: a corner follows the larger
+/// change, an edge its own axis, and the object never gets smaller than 4 pt.
+#[test]
+fn inline_resize_width_follows_the_dragged_handle() {
+    let r = Rect::new(0.0, 0.0, 40.0, 20.0);
+    let w = |h: usize, x: f64, y: f64| inline::width_for(r, h, Point::new(x, y), 40.0).unwrap();
+    assert!(w(4, 80.0, 25.0) > 70.0, "bottom-right outwards: about twice as wide");
+    assert!(w(0, 20.0, 0.0) < 40.0, "top-left inwards: smaller");
+    assert!((w(5, 0.0, 40.0) - 80.0).abs() < 1e-6, "bottom edge: twice as tall, so twice as wide");
+    assert!((w(3, 20.0, 999.0) - 20.0).abs() < 1e-6, "right edge: width only");
+    assert!(w(4, -500.0, -500.0) >= 4.0, "never below 4 pt");
+}
