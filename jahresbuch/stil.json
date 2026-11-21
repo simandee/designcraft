@@ -1,0 +1,21 @@
+{
+  "stil": "riso",
+  "farbe_ich": "#E8493A",
+  "farbe_sie": "#3554E0",
+  "farbe_text": "#1E2A5A",
+  "kasten": "papier",
+  "korn": 0.35,
+  "korn_oben": 0.45,
+  "schrift_chat": "Space Grotesk",
+  "korn_blasen": 0.8,
+  "korn_datum": 0.4,
+  "rauschen": {
+    "innen": 0.35,
+    "rahmen": 0.6,
+    "aussen": 0.6
+  },
+  "sprenkel": {
+    "rahmen": 1.0,
+    "aussen": 0.7
+  }
+}
