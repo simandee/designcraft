@@ -26,7 +26,7 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 | GitHub `simandee/designcraft`, Branch **`absatz-schatten`** | Fork von `storytold/designcraft` mit unseren Erweiterungen + Ordner `jahresbuch/` |
 | Mac `~/DesignCraft-Jahresbuch` | Klon davon; gebaut mit `cargo build --release -p designcraft -p designcraft-cli` |
 | Mac `~/DesignCraft-Jahresbuch/target/release/designcraft` | **seine** DesignCraft-Version (das installierte offizielle DesignCraft kann unsere Dateien nicht öffnen) |
-| Mac `~/WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json` | WhatsApp-Export (45.546 Nachrichten, alle Jahre), Medien darunter in `WhatsApp/…` |
+| Mac `~/WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json` | WhatsApp-Export (45.546 Nachrichten, alle Jahre). Medien unter `ausgabe/AppDomainGroup-group.net.whatsapp.WhatsApp.shared/Message/Media/…` (Pfad = `ausgabe/` + `media_base` + `data`); das Hilfsprogramm sucht sie rekursiv im Medienordner `~/WhatsApp-Export/ausgabe` |
 | Mac `~/WhatsApp-Export/.venv` | Python-Umgebung (pillow, emoji, WhatsApp-Chat-Exporter) |
 | Mac `~/Jahresbuch/` | Arbeitsordner, Einstellungen `stil.json` des Jahresbuch-Menüs, Test-Dateien |
 | Schriften | Space Grotesk, Fraunces, Work Sans in `~/Library/Fonts` (Google Fonts) |
@@ -42,6 +42,7 @@ Wichtige Felder: `from_me`, `timestamp`, `data` (Text **oder** Medienpfad, wenn 
 7 Link, 8 Dokument, 10 System, 14 gelöscht, 15 Sticker, 51 Selbstlösch-Hinweis, 59 kein Anruf),
 `reply` (key_id der zitierten Nachricht), `quoted_data`, `caption`, `reactions` `[{emoji, von: ich|sie}]`.
 Anrufe sind nicht enthalten und kommen nicht ins Buch.
+Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vCards (in `data` ein HTML-Link `<a href="…vCards/Name.vcf">Name</a>` → im Buch nur „Kontakt: Name“) oder „The media is missing“ (→ Hinweis „nicht mehr vorhanden“).
 
 ## Was gebaut ist
 

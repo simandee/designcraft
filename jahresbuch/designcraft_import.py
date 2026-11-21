@@ -475,8 +475,15 @@ class Importer:
         a = Absatz(f"Chat {s}")
         if m.get("reply"):
             self.zitat(a, m, byid)
+        daten = m.get("data") or ""
         if typ == 14:
             a.text("Nachricht gelöscht", "Hinweis")
+        elif typ == 4 or "vCards/" in daten:
+            # Kontaktkarte: nur der Name (in "data" steht ein HTML-Link auf die .vcf)
+            treffer = re.search(r">([^<]+)</a>", daten)
+            a.text("Kontakt: " + (treffer.group(1).strip() if treffer else "Kontaktkarte"), "Hinweis")
+        elif m.get("media") and daten.strip().lower().startswith("the media is missing"):
+            a.text("Anhang nicht mehr vorhanden", "Hinweis")
         elif m.get("media"):
             p = medium(self.medien, m.get("data"))
             if typ == 15 or m.get("sticker"):
