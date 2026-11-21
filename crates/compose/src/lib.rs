@@ -280,6 +280,52 @@ pub struct Deco {
     /// Shading specks: many small dots, drawn on screen only at High Quality Display (always in
     /// output), so editing stays quick.
     pub speckle: bool,
+    /// Paper grain instead of a colour fill, inside `path` (shading noise).
+    pub grain: Option<Grain>,
+}
+
+/// Paper grain: a fine noise texture, as a printed paper has. Dark grain is black multiplied over
+/// what is under it (a light surface gets mottled); light grain is white flecks (a strong colour
+/// gets lighter spots, as where the ink missed).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Grain {
+    pub light: bool,
+    pub opacity: f32,
+}
+
+/// Size of one grain cell, in points (the cells are smoothed when drawn).
+pub const GRAIN_CELL: f64 = 0.65;
+/// Side of the square grain tile, in cells; it repeats across a box.
+pub const GRAIN_TILE: u16 = 256;
+
+/// The grain's ink coverage, `GRAIN_TILE`² bytes row by row (255 = full ink): Gaussian per-cell
+/// noise, the same every time. Dark grain centres on half ink; light grain is mostly none with
+/// some strong flecks.
+pub fn grain_tile(light: bool) -> &'static [u8] {
+    static DARK: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    static LIGHT: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    let make = |seed: u64| {
+        let mut state = seed;
+        let mut next = move || {
+            // splitmix64
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            ((z ^ (z >> 31)) >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let n = usize::from(GRAIN_TILE) * usize::from(GRAIN_TILE);
+        (0..n)
+            .map(|_| {
+                // Box–Muller: one standard normal value.
+                let (u, v) = (next().max(1e-12), next());
+                let g = (-2.0 * u.ln()).sqrt() * (std::f64::consts::TAU * v).cos();
+                let ink = if light { (g * 90.0).abs() } else { 127.0 - g * 56.0 };
+                ink.round().clamp(0.0, 255.0) as u8
+            })
+            .collect::<Vec<u8>>()
+    };
+    if light { LIGHT.get_or_init(|| make(11)) } else { DARK.get_or_init(|| make(7)) }
 }
 
 #[derive(Clone, Debug, Default)]

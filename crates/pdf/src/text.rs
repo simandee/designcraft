@@ -276,6 +276,10 @@ impl Exporter<'_> {
         // Paragraph shading and rules under the text.
         self.as_artifact(s, |me, s| {
             for d in ft.decos.iter().filter(|d| !d.nonprinting && !d.over_text) {
+                if let Some(g) = d.grain {
+                    crate::export::draw_grain(s, d, g);
+                    continue;
+                }
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }

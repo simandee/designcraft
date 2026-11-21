@@ -49,8 +49,8 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
 ### DesignCraft-Erweiterungen (Rust, im Fork)
 - Absatzschattierung: **Schatten** (`shadingShadowOn/Color/Tint/Offset`), **Korn/Sprenkel**
   (`shadingSpeckle`, `…Color`, `…Tint`, `shadingSpeckleOverText`), Dialogfelder dazu;
-  **Rauschen** (`shadingNoise`, `…Color`, `…Tint`, `…ShadowColor`, `…ShadowTint`; feine Körnung
-  unter dem Text, nur bei High Quality Display; noch ohne Feld im Absatzschattierungs-Dialog).
+  **Rauschen** (`shadingNoise`: Papier-Körnung als Textur, dunkel auf der Fläche, hell auf dem
+  Schatten; unter dem Text, nur bei High Quality Display; noch ohne Feld im Absatzschattierungs-Dialog).
 - Überlappende Absatzflächen in Textreihenfolge (spätere liegen oben).
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
@@ -91,8 +91,13 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
   Korn in den Blasen (nicht auf Fotos!), genug Abstand (kein Überlappen), Uhrzeit in der Blase,
   **Rauschen** wie auf der Spalten-Box wahlweise auch auf Blasen und ihren Schatten (Menü: Haken +
   Regler „Rauschen Chatblasen“, Vorgabe aus, Stärke 0,5; stil.json `rauschen_blasen_an`,
-  `rauschen.blasen`; nicht auf Fotos, nicht auf Reaktions-Pillen). Technik: neue Absatzattribute
-  `shadingNoise`, `…Color`/`…Tint` (Blase: Textfarbe 35 %), `…ShadowColor`/`…ShadowTint` (Papier),
+  `rauschen.blasen`). „Rauschen“ heißt für den User **die grisselige, fleckige Körnung** wie auf dem
+  Ocker (nicht Punkte!). Technik: Absatzattribut `shadingNoise` (0–1) zeichnet dieselbe Art
+  Rausch-Textur (Gauß-Rauschen, Zelle 0,65 pt, geglättet): dunkel multipliziert auf der Fläche
+  (Deckkraft 0,3 × Stärke), hell auf dem Schatten (Deckkraft = Stärke); unter Text und Fotos;
+  nur bei High Quality Display; im PDF als maskiertes Bild. Reaktions-Pillen ohne.
+  **Form:** Blasen unten außen **spitz** (ihre unten links, seine unten rechts), sonst 7 pt rund;
+  der Schatten folgt der Form (User-Wunsch 21.11.2026, „Richtungseindruck“).
   **keine ✓✓**, kein „bearbeitet“.
 - **Schrift Chat:** **Space Grotesk** (Alternative Work Sans, im Menü wählbar).
 - **Datum:** **Fraunces** SemiBold, blau, **ohne Jahr**, ohne Box, ~50 % Korn über der Schrift;

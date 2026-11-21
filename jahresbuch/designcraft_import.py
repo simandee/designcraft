@@ -74,7 +74,6 @@ DATUM_PT = 10
 ABSTAND = {"datum": 9.5, "gleiche_person": 12, "wechsel": 14.5}
 DATUM_VOR = 20      # Abstand letzte Nachricht -> nächstes Datum (pt, gesamt)
 ALBUM_REIHEN = 3    # Abstand zwischen den Reihen einer Foto-Serie (pt)
-RAUSCHEN_BLASE_TON = 0.35  # Tonwert der Textfarbe für das Rauschen auf den Blasen
 DEKO_MITTE = DATUM_PT * 0.36  # Mitte der Großbuchstaben über der Grundlinie
 
 # Abgeleitete Farben: (Farbfeld, Hauptfarbe, Tonwert). Überschreibbar in stil.json unter "tonwerte".
@@ -84,6 +83,14 @@ VARIANTEN = [
     ("Ich · Verzierung", "Farbe Ich", 0.55), ("Sie · Verzierung", "Farbe Sie", 0.55),
     ("Spalte · Schatten", "Farbe Sie", 1.0), ("Papier · Pille", "Papier", 0.4),
 ]
+
+def blasen_ecken(seite):
+    """Ecken einer Chatblase (oben links, oben rechts, unten rechts, unten links): rund, nur unten
+    außen spitz – ihre links, seine rechts –, damit die Blase zur Seite des Absenders zeigt.
+    Gleiche Angabe wie im Jahresbuch-Menü (Rust)."""
+    rund, spitz = {"shape": "rounded", "size": 7}, {"shape": "none", "size": 0}
+    return [rund, rund, spitz, rund] if seite == "Ich" else [rund, rund, rund, spitz]
+
 
 DEKO_ARTEN = ["balken", "punkte", "rauten", "raster", "sterne", "pillen", "kreuze", "ringe", "dreiecke", "zickzack",
               "treppe", "blumen", "konfetti", "streifen"]
@@ -561,21 +568,22 @@ class Importer:
 
     def formate(self):
         R = lambda r: [{"shape": "rounded", "size": r}] * 4
+        ecken = blasen_ecken
         vor, nach, gleich, datum_vor = self.abstaende()
         chars = {"fontFamily": self.schrift, "fontStyle": "Regular", "size": 8.4, "fill": "Textfarbe"}
         blase = {"align": "left", "leftIndent": 7, "rightIndent": BLASE_EINZUG, "spaceBefore": vor, "spaceAfter": nach, "sameParaStyleSpacing": gleich,
                  "hyphenate": True, "keepLinesTogether": True, "keepAllLines": True,
                  "shadingOn": True, "shadingColor": "Sie · Blase", "shadingTint": 1, "shadingOffsets": [3, 6, 4, 6],
-                 "shadingWidth": "text", "shadingCorners": R(7), "borderMerge": False,
+                 "shadingWidth": "text", "shadingCorners": ecken("Sie"), "borderMerge": False,
                  "shadingShadowOn": True, "shadingShadowColor": "Ich · Schatten", "shadingShadowTint": 1, "shadingShadowOffset": [2.6, 2.6],
                  "shadingSpeckle": float(self.stil.get("korn_blasen", 0.8)), "shadingSpeckleColor": "Papier", "shadingSpeckleTint": 1,
-                 # Rauschen wie auf der Spalten-Box: dunkel auf der Blase, hell auf ihrem Schatten (nicht auf Fotos)
-                 "shadingNoise": self.rauschen_blasen(), "shadingNoiseColor": "Textfarbe", "shadingNoiseTint": RAUSCHEN_BLASE_TON,
-                 "shadingNoiseShadowColor": "Papier", "shadingNoiseShadowTint": 1}
+                 # Papier-Rauschen wie auf der Spalten-Box: dunkel auf der Blase, hell auf ihrem Schatten
+                 # (unter dem Text, Fotos liegen darüber)
+                 "shadingNoise": self.rauschen_blasen()}
         s = self.s
         s("style.paragraph.create", name="Chat Sie", para=blase, chars=chars)
         s("style.paragraph.create", name="Chat Ich", basedOn="Chat Sie", para={"align": "right", "leftIndent": BLASE_EINZUG,
-          "rightIndent": 7, "shadingColor": "Ich · Blase", "shadingShadowColor": "Sie · Schatten"})
+          "rightIndent": 7, "shadingColor": "Ich · Blase", "shadingShadowColor": "Sie · Schatten", "shadingCorners": ecken("Ich")})
         for seite in ("Sie", "Ich"):
             s("style.paragraph.create", name=f"Bild {seite}", basedOn=f"Chat {seite}", para={"shadingOffsets": [3, 3, 3.5, 3]})
             # Album-Reihen: Abstand zwischen den Reihen klein, Flächen verschmelzen zu einer Blase.

@@ -38,14 +38,10 @@ struct Shading {
     noise: Option<Noise>,
 }
 
-/// A fine grain over the shading box in `color` and over its shadow in `shadow_color`.
+/// Paper grain over the shading box (dark, multiplied) and its shadow (light flecks).
 #[derive(Clone, Debug, PartialEq)]
 struct Noise {
-    color: String,
-    tint: f32,
-    shadow_color: String,
-    shadow_tint: f32,
-    /// 0 … 1: how dense the grain is.
+    /// 0 … 1: how strong the grain is.
     amount: f64,
 }
 
@@ -124,13 +120,7 @@ impl ParaBox {
                 amount: finite(pp.shading_speckle).clamp(0.0, 1.0),
                 over_text: pp.shading_speckle_over_text,
             }),
-            noise: (finite(pp.shading_noise) > 0.0).then(|| Noise {
-                color: pp.shading_noise_color.clone(),
-                tint: pp.shading_noise_tint,
-                shadow_color: pp.shading_noise_shadow_color.clone(),
-                shadow_tint: pp.shading_noise_shadow_tint,
-                amount: finite(pp.shading_noise).clamp(0.0, 1.0),
-            }),
+            noise: (finite(pp.shading_noise) > 0.0).then(|| Noise { amount: finite(pp.shading_noise).clamp(0.0, 1.0) }),
         });
         let border = pp.border_on.then(|| Border {
             color: pp.border_color.clone(),
@@ -209,7 +199,7 @@ fn shading_deco(s: &Shading, part: &Part<'_>, frames: &[FrameSpec], first_part: 
         // Corners stay square where the box is cut by a split.
         let corners = cut_corners(s.corners, !first_part, !last_part);
         let path = (!corners.iter().all(Corner::is_none)).then(|| box_outline(rect, &corners, [true; 4]));
-        return Some(Deco { rect, color: s.color.clone(), tint: s.tint, path, nonprinting: s.nonprinting, overprint: s.overprint, over_text: false, speckle: false });
+        return Some(Deco { rect, color: s.color.clone(), tint: s.tint, path, nonprinting: s.nonprinting, overprint: s.overprint, over_text: false, speckle: false, grain: None });
     }
     None
 }
@@ -227,6 +217,7 @@ fn shadow_deco(sh: &Shadow, shading: &Deco, nonprinting: bool) -> Deco {
         overprint: sh.overprint,
         over_text: false,
         speckle: false,
+        grain: None,
     }
 }
 
@@ -287,51 +278,28 @@ fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
         overprint: sp.overprint,
         over_text: sp.over_text,
         speckle: true,
+        grain: None,
     })
 }
 
-/// Grid step of the noise grain (points): much finer than the specks.
-const GRAIN_STEP: f64 = 0.55;
+/// How strong dark grain gets at full amount: it multiplies a light box, so a little goes far.
+const DARK_GRAIN: f64 = 0.3;
 
-/// The grain over a box: tiny dots on a fine jittered grid inside the box's outline, in `color`.
-/// Drawn under the text like the specks (and, like them, only in high-quality display).
-fn noise_deco(amount: f64, color: &str, tint: f32, under: &Deco) -> Option<Deco> {
-    let rect = under.rect;
-    let outline = under.path.clone().unwrap_or_else(|| rect.to_path(TOL));
-    let mut path = BezPath::new();
-    let mut count = 0;
-    let (x0, y0) = ((rect.x0 / GRAIN_STEP).floor() as i64, (rect.y0 / GRAIN_STEP).floor() as i64);
-    let (x1, y1) = ((rect.x1 / GRAIN_STEP).ceil() as i64, (rect.y1 / GRAIN_STEP).ceil() as i64);
-    // Up to half of the cells at full amount.
-    let chance = amount * 0.5;
-    'rows: for iy in y0..y1 {
-        for ix in x0..x1 {
-            // Channels 4–7: a pattern of its own, not lined up with the specks.
-            if speck_noise(ix, iy, 4) >= chance {
-                continue;
-            }
-            let c = kurbo::Point::new((ix as f64 + speck_noise(ix, iy, 5)) * GRAIN_STEP, (iy as f64 + speck_noise(ix, iy, 6)) * GRAIN_STEP);
-            if !outline.contains(c) {
-                continue;
-            }
-            let r = 0.07 + speck_noise(ix, iy, 7) * 0.16;
-            path.extend(kurbo::Circle::new(c, r).path_elements(0.05));
-            count += 1;
-            if count >= MAX_SPECKS {
-                break 'rows;
-            }
-        }
-    }
-    (count > 0).then(|| Deco {
-        rect,
-        color: color.to_string(),
-        tint,
-        path: Some(path),
+/// Paper grain over a box, inside its outline: dark grain multiplied over the box itself, light
+/// flecks over its shadow. Drawn under the text, and like the specks only in high-quality display.
+fn grain_deco(amount: f64, light: bool, under: &Deco) -> Deco {
+    let opacity = if light { amount } else { amount * DARK_GRAIN };
+    Deco {
+        rect: under.rect,
+        color: String::new(),
+        tint: 1.0,
+        path: Some(under.path.clone().unwrap_or_else(|| under.rect.to_path(TOL))),
         nonprinting: under.nonprinting,
         overprint: false,
         over_text: false,
         speckle: true,
-    })
+        grain: Some(crate::Grain { light, opacity: opacity as f32 }),
+    }
 }
 
 /// The border strokes (and plain edges) for one part of a paragraph run, pushed onto `decos`.
@@ -344,11 +312,11 @@ fn border_decos(bd: &Border, part: &Part<'_>, first_part: bool, last_part: bool,
     for (path, gap) in border_paths(bd, o, open_top, open_bottom) {
         let (color, tint, overprint) =
             if gap { (bd.gap_color.clone(), bd.gap_tint, bd.gap_overprint) } else { (bd.color.clone(), bd.tint, bd.overprint) };
-        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), nonprinting: false, overprint, over_text: false, speckle: false }));
+        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), nonprinting: false, overprint, over_text: false, speckle: false, grain: None }));
     }
     if is_plain(bd, open_top, open_bottom) {
         decos.extend(plain_edges(bd, o, open_top, open_bottom).into_iter().map(|rect| {
-            (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, path: None, nonprinting: false, overprint: bd.overprint, over_text: false, speckle: false })
+            (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, path: None, nonprinting: false, overprint: bd.overprint, over_text: false, speckle: false, grain: None })
         }));
     }
 }
@@ -373,13 +341,13 @@ fn group_decos(out: &ComposedStory, paras: std::ops::RangeInclusive<usize>, b: &
             if let Some(sh) = &s.shadow {
                 let shadow = shadow_deco(sh, &deco, s.nonprinting);
                 let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &shadow));
-                let grain = s.noise.as_ref().and_then(|n| noise_deco(n.amount, &n.shadow_color, n.shadow_tint, &shadow));
+                let grain = s.noise.as_ref().map(|n| grain_deco(n.amount, true, &shadow));
                 decos.push((part.fi, true, shadow));
                 decos.extend(grain.map(|d| (part.fi, true, d)));
                 decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
             }
             let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &deco));
-            let grain = s.noise.as_ref().and_then(|n| noise_deco(n.amount, &n.color, n.tint, &deco));
+            let grain = s.noise.as_ref().map(|n| grain_deco(n.amount, false, &deco));
             decos.push((part.fi, true, deco));
             decos.extend(grain.map(|d| (part.fi, true, d)));
             decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
@@ -679,33 +647,31 @@ mod dotted_tests {
         }
     }
 
-    /// The grain stays inside a rounded box (not in its cut-off corners), and more amount means
-    /// more grain.
+    /// Grain follows the box's rounded outline, is dark over the box and light over its shadow,
+    /// and gets stronger with the amount.
     #[test]
-    fn noise_grain_stays_inside_the_box_and_follows_the_amount() {
+    fn grain_follows_the_box_and_the_amount() {
         let rect = Rect::new(10.0, 20.0, 90.0, 50.0);
         let corners = [Corner { shape: designcraft_geom::corners::CornerShape::Rounded, size: 9.0 }; 4];
         let outline = box_outline(rect, &corners, [true; 4]);
-        let under = Deco { rect, color: "[Black]".into(), tint: 1.0, path: Some(outline.clone()), nonprinting: false, overprint: false, over_text: false, speckle: false };
-        let dots = |amount: f64| -> Vec<kurbo::Point> {
-            let Some(d) = noise_deco(amount, "[Paper]", 1.0, &under) else { return Vec::new() };
-            assert!(!d.over_text && d.speckle, "under the text, drawn with the specks");
-            // Each dot is its own subpath: its centre is the middle of its bounds.
-            let mut centres = Vec::new();
-            let mut dot = BezPath::new();
-            for e in d.path.unwrap().elements().iter().chain([&kurbo::PathEl::MoveTo(kurbo::Point::ZERO)]) {
-                if matches!(e, kurbo::PathEl::MoveTo(_)) && !dot.elements().is_empty() {
-                    centres.push(dot.bounding_box().center());
-                    dot = BezPath::new();
-                }
-                dot.push(*e);
-            }
-            centres
-        };
-        let (light, dense) = (dots(0.2), dots(0.9));
-        assert!(!light.is_empty() && dense.len() > light.len(), "{} vs {} dots", light.len(), dense.len());
-        assert!(dense.iter().all(|c| outline.contains(*c)), "a dot outside the rounded box");
-        assert!(dots(0.0).is_empty());
+        let under = Deco { rect, color: "[Black]".into(), tint: 1.0, path: Some(outline.clone()), ..Default::default() };
+        let (weak, strong) = (grain_deco(0.2, false, &under), grain_deco(0.9, false, &under));
+        assert_eq!(strong.path.as_ref(), Some(&outline), "inside the rounded box, not its bounds");
+        assert!(!strong.over_text && strong.speckle, "under the text, drawn with the specks");
+        let op = |d: &Deco| d.grain.map(|g| g.opacity).unwrap_or(0.0);
+        assert!(op(&strong) > op(&weak), "stronger with the amount");
+        assert!(!strong.grain.unwrap().light && grain_deco(0.5, true, &under).grain.unwrap().light);
+    }
+
+    /// The tile is noise: varied, and dark grain centred on half ink while light grain is mostly
+    /// clear with some flecks.
+    #[test]
+    fn grain_tiles_are_noise() {
+        let mean = |t: &[u8]| t.iter().map(|v| f64::from(*v)).sum::<f64>() / t.len() as f64;
+        let (dark, light) = (crate::grain_tile(false), crate::grain_tile(true));
+        assert!((100.0..156.0).contains(&mean(dark)), "dark mean {}", mean(dark));
+        assert!(mean(light) < mean(dark), "light grain is mostly clear");
+        assert!(dark.iter().min() < Some(&60) && dark.iter().max() > Some(&200), "a wide spread");
     }
 
     #[test]

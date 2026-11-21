@@ -417,3 +417,64 @@ pub(super) struct CoverageImage {
     pub(super) grey: Arc<Vec<u8>>,
     pub(super) size: (u32, u32),
 }
+
+/// Paper grain inside a decoration's outline (shading noise), as the screen draws it: the grain
+/// tile, one image pixel per [`designcraft_compose::GRAIN_CELL`] points on the same grid, as a
+/// luminosity mask over black multiplied (dark grain) or white laid over (light grain), at the
+/// grain's opacity.
+pub(crate) fn draw_grain(s: &mut Surface, d: &designcraft_compose::Deco, g: designcraft_compose::Grain) {
+    let Some(bp) = &d.path else { return };
+    let cell = designcraft_compose::GRAIN_CELL;
+    let r = d.rect;
+    let (x0, y0) = ((r.x0 / cell).floor(), (r.y0 / cell).floor());
+    let (w, h) = ((r.x1 / cell).ceil() - x0, (r.y1 / cell).ceil() - y0);
+    if !(w >= 1.0 && h >= 1.0 && w <= 8192.0 && h <= 8192.0) {
+        return;
+    }
+    let (w, h) = (w as i64, h as i64);
+    let n = i64::from(designcraft_compose::GRAIN_TILE);
+    let tile = designcraft_compose::grain_tile(g.light);
+    let mut grey = Vec::with_capacity((w * h) as usize);
+    for y in 0..h {
+        let ty = (y0 as i64 + y).rem_euclid(n);
+        for x in 0..w {
+            let tx = (x0 as i64 + x).rem_euclid(n);
+            grey.push(tile[(ty * n + tx) as usize]);
+        }
+    }
+    let area = Rect::new(x0 * cell, y0 * cell, (x0 + w as f64) * cell, (y0 + h as f64) * cell);
+    let (Some(clip), Some(fill), Some(size), Some(image)) = (
+        to_path(bp),
+        to_path(&area.to_path(0.1)),
+        Size::from_wh(area.width() as f32, area.height() as f32),
+        CoverageImage::from_grey(Arc::new(grey), (w as u32, h as u32)),
+    ) else {
+        return;
+    };
+    // Smoothed, as the screen's image sampling smooths the cells.
+    let Ok(image) = Image::from_custom(image, true) else { return };
+    let mut sb = s.stream_builder();
+    let mut ms = sb.surface();
+    ms.push_transform(&tf(Affine::translate((area.x0, area.y0))));
+    ms.draw_image(image, size);
+    ms.pop();
+    ms.finish();
+    let stream = sb.finish();
+    let (blend, ink) = if g.light {
+        (krilla::blend::BlendMode::Normal, rgb::Color::new(255, 255, 255))
+    } else {
+        (krilla::blend::BlendMode::Multiply, rgb::Color::new(0, 0, 0))
+    };
+    s.push_clip_path(&clip, &krilla::paint::FillRule::NonZero);
+    s.push_blend_mode(blend);
+    s.push_opacity(super::norm(g.opacity));
+    s.push_mask(krilla::mask::Mask::new(stream, krilla::mask::MaskType::Luminosity));
+    s.set_stroke(None);
+    s.set_fill(Some(Fill { paint: ink.into(), ..Default::default() }));
+    s.draw_path(&fill);
+    s.set_fill(None);
+    s.pop();
+    s.pop();
+    s.pop();
+    s.pop();
+}

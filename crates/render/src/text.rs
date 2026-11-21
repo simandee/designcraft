@@ -387,6 +387,10 @@ impl Renderer {
             if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
                 continue;
             }
+            if let Some(g) = d.grain {
+                draw_grain(ctx, m, d, g);
+                continue;
+            }
             if let Some(c) = doc.resolve_color(&d.color, d.tint) {
                 ctx.set_transform(m);
                 ctx.set_paint(color_of(&c, 1.0));
@@ -831,4 +835,47 @@ mod rule_tests {
         assert!(bar.x0 <= tab.x + 0.5, "the bar starts at the text, not at the tab: {bar:?}");
         assert!(bar.x1 >= tab.x + tab.adv - 0.5, "the bar covers the tab's width: {bar:?}, tab {} + {}", tab.x, tab.adv);
     }
+}
+
+/// The grain tile as a premultiplied image: black with the tile's coverage as alpha (dark grain)
+/// or white flecks (light grain). Made once.
+fn grain_pixmap(light: bool) -> Arc<vello_cpu::Pixmap> {
+    static DARK: std::sync::OnceLock<Arc<vello_cpu::Pixmap>> = std::sync::OnceLock::new();
+    static LIGHT: std::sync::OnceLock<Arc<vello_cpu::Pixmap>> = std::sync::OnceLock::new();
+    let make = || {
+        let n = designcraft_compose::GRAIN_TILE;
+        let mut pm = vello_cpu::Pixmap::new(n, n);
+        for (px, a) in pm.data_as_u8_slice_mut().chunks_exact_mut(4).zip(designcraft_compose::grain_tile(light)) {
+            let c = if light { *a } else { 0 };
+            px.copy_from_slice(&[c, c, c, *a]);
+        }
+        pm.set_may_have_transparency(true);
+        Arc::new(pm)
+    };
+    Arc::clone(if light { LIGHT.get_or_init(make) } else { DARK.get_or_init(make) })
+}
+
+/// Paper grain inside a decoration's outline: the repeating tile, a cell per
+/// [`designcraft_compose::GRAIN_CELL`] points and smoothed, multiplied (dark) or laid over
+/// (light) at the grain's opacity.
+fn draw_grain(ctx: &mut RenderContext, m: kurbo::Affine, d: &designcraft_compose::Deco, g: designcraft_compose::Grain) {
+    let Some(path) = &d.path else { return };
+    ctx.set_transform(m);
+    ctx.push_clip_layer(path);
+    let mix = if g.light { peniko::Mix::Normal } else { peniko::Mix::Multiply };
+    ctx.push_layer(None, Some(peniko::BlendMode::new(mix, peniko::Compose::SrcOver)), Some(g.opacity.clamp(0.0, 1.0)), None, None);
+    ctx.set_paint(vello_cpu::Image {
+        image: vello_cpu::ImageSource::Pixmap(grain_pixmap(g.light)),
+        sampler: peniko::ImageSampler {
+            x_extend: peniko::Extend::Repeat,
+            y_extend: peniko::Extend::Repeat,
+            quality: peniko::ImageQuality::Medium,
+            alpha: 1.0,
+        },
+    });
+    ctx.set_paint_transform(kurbo::Affine::scale(designcraft_compose::GRAIN_CELL));
+    ctx.fill_rect(&d.rect);
+    ctx.reset_paint_transform();
+    ctx.pop_layer();
+    ctx.pop_layer();
 }

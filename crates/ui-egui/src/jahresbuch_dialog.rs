@@ -65,8 +65,6 @@ const ABSTAENDE: [(&str, &str, &str, f64); 3] = [
 ];
 /// Abstand letzte Nachricht → nächstes Datum (pt, gesamt), wie im Hilfsprogramm.
 const DATUM_VOR: f64 = 20.0;
-/// Tonwert der Textfarbe für das Rauschen auf den Blasen (wie `RAUSCHEN_BLASE_TON` im Hilfsprogramm).
-const RAUSCHEN_BLASE_TON: f64 = 0.35;
 /// Welche Gestaltung die Vorschau gerade zeigt.
 const VORSCHAU_FELDER: &str = "_vorschauFelder";
 
@@ -362,11 +360,14 @@ fn gestaltung_skript(app: &mut DesignApp, d: &Dialog) -> Result<String, String> 
     // Reaktions-Pillen bleiben ohne).
     let rauschen = if d.b(RAUSCHEN_BLASEN_AN.0) { d.n("rauschenBlasen").unwrap_or(0.0).clamp(0.0, 1.0) } else { 0.0 };
     if hat("paragraphStyles", "Chat Sie") {
-        b(
-            "style.paragraph.edit",
-            json!({"name": "Chat Sie", "para": {"shadingNoise": rauschen, "shadingNoiseColor": "Textfarbe", "shadingNoiseTint": RAUSCHEN_BLASE_TON,
-                "shadingNoiseShadowColor": "Papier", "shadingNoiseShadowTint": 1.0}}),
-        );
+        b("style.paragraph.edit", json!({"name": "Chat Sie", "para": {"shadingNoise": rauschen}}));
+    }
+    // Blasen zeigen zum Absender: unten außen spitz (auch in Chats, die vorher importiert wurden).
+    for seite in ["Sie", "Ich"] {
+        let stil = format!("Chat {seite}");
+        if hat("paragraphStyles", &stil) {
+            b("style.paragraph.edit", json!({"name": stil, "para": {"shadingCorners": blasen_ecken(seite)}}));
+        }
     }
     for seite in ["Sie", "Ich"] {
         for von in ["von Ihr", "von Mir", "von Beiden"] {
@@ -412,6 +413,13 @@ fn gestaltung_skript(app: &mut DesignApp, d: &Dialog) -> Result<String, String> 
         b("object.setFlags", json!({"ids": ids, "hidden": v <= 0.0}));
     }
     Ok(befehle.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"))
+}
+
+/// Ecken einer Chatblase (oben links, oben rechts, unten rechts, unten links): rund, nur unten
+/// außen spitz – ihre links, seine rechts. Wie `blasen_ecken` im Hilfsprogramm.
+fn blasen_ecken(seite: &str) -> Value {
+    let (rund, spitz) = (json!({"shape": "rounded", "size": 7}), json!({"shape": "none", "size": 0}));
+    if seite == "Ich" { json!([rund, rund, spitz, rund]) } else { json!([rund, rund, rund, spitz]) }
 }
 
 /// Die Gestaltung fest aufs Dokument anwenden (ein Rückgängig-Schritt).
