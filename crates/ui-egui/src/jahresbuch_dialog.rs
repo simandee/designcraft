@@ -583,6 +583,28 @@ pub fn confirm(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
 mod tests {
     use super::*;
 
+    /// Zwei verkettete Rahmen, der linke markiert: der Chat läuft vom linken in den rechten Rahmen
+    /// und erst danach auf neue Seiten.
+    #[test]
+    fn chat_fuellt_erst_die_verketteten_rahmen() {
+        let (Ok(export), Ok(medien)) = (std::env::var("JAHRESBUCH_TEST_EXPORT"), std::env::var("JAHRESBUCH_TEST_MEDIEN")) else { return };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"preset": "A4", "pages": 1, "facingPages": true})).unwrap();
+        let links = app.run("frame.create", json!({"spread": 0, "rect": [57.2, 60, 281.5, 764.8], "content": "text"})).unwrap();
+        let rechts = app.run("text.thread", json!({"from": links["id"], "rect": [313.7, 60, 538, 764.8], "spread": 0})).unwrap()["to"].clone();
+        app.run("selection.set", json!({"ids": [links["id"]]})).unwrap();
+        open(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        for (k, v) in [("export", export.as_str()), ("medien", medien.as_str()), ("von", "2026-11-01"), ("bis", "2026-11-30"), ("python", "python3")] {
+            d.fields.insert(k.into(), json!(v));
+        }
+        confirm(&mut app, &d).unwrap();
+        let doc = app.session.execute("document.inspect", &json!({})).unwrap();
+        let story = doc["spreads"][0]["items"].as_array().unwrap().iter().find(|i| i["id"] == links["id"]).unwrap()["story"].clone();
+        let rahmen: Vec<Value> = app.run("story.get", json!({"story": story})).unwrap()["frames"].as_array().unwrap().clone();
+        assert_eq!(rahmen.get(1), Some(&rechts), "nach dem linken Rahmen kommt der rechte, nicht die neuen Seiten: {rahmen:?}");
+    }
+
     fn gleiche_person(app: &DesignApp) -> Option<f64> {
         let doc = &app.session.active().unwrap().doc;
         doc.styles.paragraph.iter().find(|s| s.name == "Chat Sie").and_then(|s| s.para.same_para_style_spacing.flatten())
