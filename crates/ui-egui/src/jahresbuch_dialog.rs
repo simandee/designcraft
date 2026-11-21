@@ -45,14 +45,12 @@ fn standard_python() -> String {
 }
 
 /// Felder: (Schlüssel im Fenster, Schlüssel in stil.json, Standard).
-const REGLER: [(&str, &str, &str, f64); 7] = [
+const REGLER: [(&str, &str, &str, f64); 5] = [
     ("kornBlasen", "korn_blasen", "Korn in den Blasen", 0.8),
     ("kornDatum", "korn_datum", "Korn auf dem Datum", 0.4),
     ("rauschenInnen", "rauschen.innen", "Rauschen Innenfläche", 0.35),
     ("rauschenRahmen", "rauschen.rahmen", "Rauschen Rahmen (Blau)", 0.6),
-    ("rauschenAussen", "rauschen.aussen", "Rauschen Außenrand (Rot)", 0.6),
     ("sprenkelRahmen", "sprenkel.rahmen", "Sprenkel Rahmen (Blau)", 1.0),
-    ("sprenkelAussen", "sprenkel.aussen", "Sprenkel Außenrand (Rot)", 0.7),
 ];
 
 const FARBEN: [(&str, &str, &str, &str); 4] = [
@@ -293,14 +291,14 @@ fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
             app.run("style.paragraph.edit", json!({"name": name, "chars": {"fontFamily": schrift}}))?;
         }
     }
-    for (stil, key) in [("Chat Sie", "kornBlasen"), ("Datum", "kornDatum"), ("Spalte Schatten", "sprenkelRahmen"), ("Spalte Schatten Versatz", "sprenkelAussen")] {
+    for (stil, key) in [("Chat Sie", "kornBlasen"), ("Datum", "kornDatum"), ("Spalte Schatten", "sprenkelRahmen")] {
         if hat("paragraphStyles", stil) {
             app.run("style.paragraph.edit", json!({"name": stil, "para": {"shadingSpeckle": d.n(key).unwrap_or(0.0)}}))?;
         }
     }
     // Rauschen: Bildrahmen auf der Mustervorlage, nach ihrem Namen gefunden; Stärke = Deckkraft.
     for (label, key, hell) in
-        [("Rauschen Innenfläche", "rauschenInnen", false), ("Rauschen Rahmen (Blau)", "rauschenRahmen", true), ("Rauschen Außenrand (Rot)", "rauschenAussen", true)]
+        [("Rauschen Innenfläche", "rauschenInnen", false), ("Rauschen Rahmen (Blau)", "rauschenRahmen", true)]
     {
         let ids: Vec<Value> = app.run("object.findByLabel", json!({"label": label}))?["ids"].as_array().cloned().unwrap_or_default();
         if ids.is_empty() {

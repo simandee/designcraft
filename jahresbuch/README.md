@@ -55,8 +55,8 @@ Danach `Chat_2021.designcraft` in DesignCraft öffnen und weiterarbeiten.
 - `tonwerte`: einzelne Varianten abweichend einstellen, z. B. `{"Sie · Blase": 0.4}`.
 - `schrift_chat`: `"Space Grotesk"` oder `"Work Sans"`.
 - `korn_blasen`, `korn_datum`: Korn in den Blasen bzw. auf der Datumszeile (0 = aus, 1 = kräftig).
-- `rauschen`: feines Rauschen je Fläche der Spalten-Box: `innen`, `rahmen` (Blau), `aussen` (Rot).
-- `sprenkel`: helle Sprenkel auf `rahmen` und `aussen`.
+- `rauschen`: feines Rauschen je Fläche der Spalten-Box: `innen` und `rahmen` (blauer Schatten).
+- `sprenkel`: helle Sprenkel auf `rahmen` (blauer Schatten).
 
 In DesignCraft selbst geht alles auch nachträglich: Farbfelder in der Gruppe „Jahresbuch“,
 Absatzformate „Chat Sie“/„Chat Ich“/„Datum“/„Spalte Schatten“, Rauschen-Rahmen auf der Mustervorlage.

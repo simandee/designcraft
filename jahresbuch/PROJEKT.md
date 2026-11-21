@@ -69,12 +69,13 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
 ## Gestaltung der Chat-Seiten (alles vom User so entschieden)
 
 - **Riso-Stil**, zwei Spalten-Boxen pro Seite auf weißer Seite.
-- Spalten-Box: Papierfarbe + feines Papier-Rauschen; Schatten blau („Spalte · Schatten“ = 100 %
-  Farbe Sie) + leicht versetzter Koralle-Druck darunter („Spalte · Versatz“), beide mit Rauschen und
-  hellen Sprenkeln. Rauschen/Sprenkel je Fläche einzeln an/aus + Stärke.
+- Spalten-Box: Papierfarbe + feines Papier-Rauschen; **nur ein** Schatten, blau („Spalte · Schatten“
+  = 100 % Farbe Sie), **4 pt** nach rechts unten versetzt (früher 6 pt + Koralle-Druck darunter; vom
+  User am 21.11.2026 reduziert, weil sich die Boxen im 170 × 240-Buch überschnitten), mit Rauschen
+  und hellen Sprenkeln. Rauschen/Sprenkel je Fläche einzeln an/aus + Stärke.
 - **Farben:** 4 Hauptfarben (Farbe Ich #E8493A Koralle, Farbe Sie #3554E0 Blau, Textfarbe #1E2A5A,
   Papier #F6F0E3); alle Varianten als Tonwert-Farbfelder in der Gruppe „Jahresbuch“
-  (Ich/Sie · Blase, · Schatten, · Verzierung, Spalte · Schatten/Versatz, Papier · Pille).
+  (Ich/Sie · Blase, · Schatten, · Verzierung, Spalte · Schatten, Papier · Pille).
 - **Blasen:** ihre links hellblau, seine rechts hell-koralle, Schatten in der Gegenfarbe,
   Korn in den Blasen (nicht auf Fotos!), genug Abstand (kein Überlappen), Uhrzeit in der Blase,
   **keine ✓✓**, kein „bearbeitet“.

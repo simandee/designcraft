@@ -42,6 +42,7 @@ SEITE_B, SEITE_H = 595.2755905511812, 841.8897637795277
 RAND = {"top": 60, "bottom": 77.1, "inside": 57.2, "outside": 57.2}
 STEG = 32.2
 BOX_RAND = 9
+SCHATTEN_VERSATZ = 4  # so weit liegt der blaue Schatten der Spaltenbox nach rechts unten versetzt (pt)
 SPALTE_B = (SEITE_B - RAND["inside"] - RAND["outside"] - STEG) / 2
 BLASE_EINZUG = 60          # so weit bleibt die andere Seite frei (max. Blasenbreite)
 BILD_B = SPALTE_B - BLASE_EINZUG - 7 - 6  # Breite eines Einzelbilds in der Blase
@@ -75,7 +76,7 @@ VARIANTEN = [
     ("Ich · Blase", "Farbe Ich", 0.34), ("Sie · Blase", "Farbe Sie", 0.26),
     ("Ich · Schatten", "Farbe Ich", 0.55), ("Sie · Schatten", "Farbe Sie", 0.55),
     ("Ich · Verzierung", "Farbe Ich", 0.55), ("Sie · Verzierung", "Farbe Sie", 0.55),
-    ("Spalte · Schatten", "Farbe Sie", 1.0), ("Spalte · Versatz", "Farbe Ich", 0.75), ("Papier · Pille", "Papier", 0.4),
+    ("Spalte · Schatten", "Farbe Sie", 1.0), ("Papier · Pille", "Papier", 0.4),
 ]
 
 DEKO_ARTEN = ["balken", "punkte", "rauten", "raster", "sterne", "pillen", "kreuze", "ringe", "dreiecke", "zickzack",
@@ -575,8 +576,6 @@ class Importer:
         fl_chars = {"size": 1, "leading": {"kind": "points", "value": H}}
         s("style.paragraph.create", name="Spalte Schatten", chars=fl_chars,
           para={**flaeche, "shadingColor": "Spalte · Schatten", "shadingSpeckle": float(self.stil.get("sprenkel", {}).get("rahmen", 1.0))})
-        s("style.paragraph.create", name="Spalte Schatten Versatz", chars=fl_chars,
-          para={**flaeche, "shadingColor": "Spalte · Versatz", "shadingSpeckle": float(self.stil.get("sprenkel", {}).get("aussen", 0.7))})
         s("style.paragraph.create", name="Seitenzahl", para={"align": "center"},
           chars={"fontFamily": self.schrift, "fontStyle": "Bold", "size": 18, "fill": "Farbe Ich"})
         s("style.character.create", name="Zeit", chars={"size": 6, "fontStyle": "Medium"})
@@ -588,7 +587,7 @@ class Importer:
 
     def rausch_einstellung(self, flaeche):
         """Stärke des Papier-Rauschens je Fläche (0 = aus … 1 = kräftig), aus stil.json "rauschen"."""
-        standard = {"innen": float(self.stil.get("korn", 0.35)), "rahmen": 0.6, "aussen": 0.6}
+        standard = {"innen": float(self.stil.get("korn", 0.35)), "rahmen": 0.6}
         return float(self.stil.get("rauschen", {}).get(flaeche, standard[flaeche]))
 
     def rausch_png(self, hell):
@@ -610,7 +609,7 @@ class Importer:
         """Rauschen über einer Fläche: ein eigener Bildrahmen, benannt nach der Fläche. In DesignCraft
         über die Deckkraft (Stärke) und Ausblenden (an/aus) einzeln einstellbar."""
         staerke = self.rausch_einstellung(flaeche)
-        name = {"innen": "Rauschen Innenfläche", "rahmen": "Rauschen Rahmen (Blau)", "aussen": "Rauschen Außenrand (Rot)"}[flaeche]
+        name = {"innen": "Rauschen Innenfläche", "rahmen": "Rauschen Rahmen (Blau)"}[flaeche]
         hell = flaeche != "innen"
         k = self.s("frame.create", spread=spread, rect=rect, content="graphic")
         ids = [f"${k}.id"]
@@ -653,13 +652,11 @@ class Importer:
             spalten = [(x0, x0 + SPALTE_B), (x0 + SPALTE_B + STEG, x0 + 2 * SPALTE_B + STEG)]
             for sx0, sx1 in spalten:
                 box = [sx0 - BOX_RAND, RAND["top"] - BOX_RAND, sx1 + BOX_RAND, SEITE_H - RAND["bottom"] + BOX_RAND]
-                # Riso-Schatten: zwei leicht versetzte Farbaufträge mit kräftigem Papier-Korn
+                # Riso-Schatten: ein blauer Farbauftrag, leicht versetzt, mit kräftigem Papier-Korn
                 # (Absatzschattierung in einem leeren Textrahmen, damit Farben und Korn Farbfelder bleiben)
-                for (dx, dy), stil, flaeche_name in (((7.6, 7.8), "Spalte Schatten Versatz", "aussen"),
-                                                     ((6, 6), "Spalte Schatten", "rahmen")):
-                    r = [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy]
-                    self.flaeche(spread, r, stil)
-                    self.rauschen(spread, r, flaeche_name)
+                r = [box[0] + SCHATTEN_VERSATZ, box[1] + SCHATTEN_VERSATZ, box[2] + SCHATTEN_VERSATZ, box[3] + SCHATTEN_VERSATZ]
+                self.flaeche(spread, r, "Spalte Schatten")
+                self.rauschen(spread, r, "rahmen")
                 i = self.s("frame.create", spread=spread, rect=box, content="unassigned")
                 ids = [f"${i}.id"]
                 self.s("object.fill", swatch="Papier", ids=ids); self.s("object.stroke", swatch="[None]", ids=ids)
