@@ -105,6 +105,8 @@ impl Names<'_> {
         self.o(&mut p.shading_color);
         self.o(&mut p.shading_shadow_color);
         self.o(&mut p.shading_speckle_color);
+        self.o(&mut p.shading_noise_color);
+        self.o(&mut p.shading_noise_shadow_color);
         self.o(&mut p.border_color);
         self.o(&mut p.border_gap_color);
     }

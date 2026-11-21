@@ -203,6 +203,14 @@ attr_set! {
         shading_speckle_overprint: bool = false,
         /// The specks lie over the paragraph's text and inline objects instead of under them.
         shading_speckle_over_text: bool = false,
+        /// Shading noise: a fine, dense grain like printed paper, under the paragraph's text and
+        /// inline objects: on the box in `shading_noise_color`, on its shadow in
+        /// `shading_noise_shadow_color`. 0 = none … 1 = dense.
+        shading_noise: f64 = 0.0,
+        shading_noise_color: String = "[Black]".into(),
+        shading_noise_tint: f32 = 0.3,
+        shading_noise_shadow_color: String = "[Paper]".into(),
+        shading_noise_shadow_tint: f32 = 1.0,
         /// Least space between a spanning or split paragraph and the column text above and below it.
         span_space_before: f64 = 0.0,
         span_space_after: f64 = 0.0,

@@ -35,6 +35,18 @@ struct Shading {
     overprint: bool,
     shadow: Option<Shadow>,
     speckle: Option<Speckle>,
+    noise: Option<Noise>,
+}
+
+/// A fine grain over the shading box in `color` and over its shadow in `shadow_color`.
+#[derive(Clone, Debug, PartialEq)]
+struct Noise {
+    color: String,
+    tint: f32,
+    shadow_color: String,
+    shadow_tint: f32,
+    /// 0 … 1: how dense the grain is.
+    amount: f64,
 }
 
 /// Small specks of `color` scattered over the shading box (and its shadow).
@@ -111,6 +123,13 @@ impl ParaBox {
                 overprint: pp.shading_speckle_overprint,
                 amount: finite(pp.shading_speckle).clamp(0.0, 1.0),
                 over_text: pp.shading_speckle_over_text,
+            }),
+            noise: (finite(pp.shading_noise) > 0.0).then(|| Noise {
+                color: pp.shading_noise_color.clone(),
+                tint: pp.shading_noise_tint,
+                shadow_color: pp.shading_noise_shadow_color.clone(),
+                shadow_tint: pp.shading_noise_shadow_tint,
+                amount: finite(pp.shading_noise).clamp(0.0, 1.0),
             }),
         });
         let border = pp.border_on.then(|| Border {
@@ -271,6 +290,50 @@ fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
     })
 }
 
+/// Grid step of the noise grain (points): much finer than the specks.
+const GRAIN_STEP: f64 = 0.55;
+
+/// The grain over a box: tiny dots on a fine jittered grid inside the box's outline, in `color`.
+/// Drawn under the text like the specks (and, like them, only in high-quality display).
+fn noise_deco(amount: f64, color: &str, tint: f32, under: &Deco) -> Option<Deco> {
+    let rect = under.rect;
+    let outline = under.path.clone().unwrap_or_else(|| rect.to_path(TOL));
+    let mut path = BezPath::new();
+    let mut count = 0;
+    let (x0, y0) = ((rect.x0 / GRAIN_STEP).floor() as i64, (rect.y0 / GRAIN_STEP).floor() as i64);
+    let (x1, y1) = ((rect.x1 / GRAIN_STEP).ceil() as i64, (rect.y1 / GRAIN_STEP).ceil() as i64);
+    // Up to half of the cells at full amount.
+    let chance = amount * 0.5;
+    'rows: for iy in y0..y1 {
+        for ix in x0..x1 {
+            // Channels 4–7: a pattern of its own, not lined up with the specks.
+            if speck_noise(ix, iy, 4) >= chance {
+                continue;
+            }
+            let c = kurbo::Point::new((ix as f64 + speck_noise(ix, iy, 5)) * GRAIN_STEP, (iy as f64 + speck_noise(ix, iy, 6)) * GRAIN_STEP);
+            if !outline.contains(c) {
+                continue;
+            }
+            let r = 0.07 + speck_noise(ix, iy, 7) * 0.16;
+            path.extend(kurbo::Circle::new(c, r).path_elements(0.05));
+            count += 1;
+            if count >= MAX_SPECKS {
+                break 'rows;
+            }
+        }
+    }
+    (count > 0).then(|| Deco {
+        rect,
+        color: color.to_string(),
+        tint,
+        path: Some(path),
+        nonprinting: under.nonprinting,
+        overprint: false,
+        over_text: false,
+        speckle: true,
+    })
+}
+
 /// The border strokes (and plain edges) for one part of a paragraph run, pushed onto `decos`.
 fn border_decos(bd: &Border, part: &Part<'_>, first_part: bool, last_part: bool, decos: &mut Vec<(usize, bool, Deco)>) {
     let Some(r) = inner_rect(&part.lines, bd.width, bd.top, bd.bottom) else { return };
@@ -310,11 +373,15 @@ fn group_decos(out: &ComposedStory, paras: std::ops::RangeInclusive<usize>, b: &
             if let Some(sh) = &s.shadow {
                 let shadow = shadow_deco(sh, &deco, s.nonprinting);
                 let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &shadow));
+                let grain = s.noise.as_ref().and_then(|n| noise_deco(n.amount, &n.shadow_color, n.shadow_tint, &shadow));
                 decos.push((part.fi, true, shadow));
+                decos.extend(grain.map(|d| (part.fi, true, d)));
                 decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
             }
             let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &deco));
+            let grain = s.noise.as_ref().and_then(|n| noise_deco(n.amount, &n.color, n.tint, &deco));
             decos.push((part.fi, true, deco));
+            decos.extend(grain.map(|d| (part.fi, true, d)));
             decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
         }
         if let Some(bd) = &b.border {
@@ -610,6 +677,35 @@ mod dotted_tests {
         for g in gaps {
             assert!((g - expected).abs() < 0.05, "uneven dot gaps {gaps:?}, expected {expected}");
         }
+    }
+
+    /// The grain stays inside a rounded box (not in its cut-off corners), and more amount means
+    /// more grain.
+    #[test]
+    fn noise_grain_stays_inside_the_box_and_follows_the_amount() {
+        let rect = Rect::new(10.0, 20.0, 90.0, 50.0);
+        let corners = [Corner { shape: designcraft_geom::corners::CornerShape::Rounded, size: 9.0 }; 4];
+        let outline = box_outline(rect, &corners, [true; 4]);
+        let under = Deco { rect, color: "[Black]".into(), tint: 1.0, path: Some(outline.clone()), nonprinting: false, overprint: false, over_text: false, speckle: false };
+        let dots = |amount: f64| -> Vec<kurbo::Point> {
+            let Some(d) = noise_deco(amount, "[Paper]", 1.0, &under) else { return Vec::new() };
+            assert!(!d.over_text && d.speckle, "under the text, drawn with the specks");
+            // Each dot is its own subpath: its centre is the middle of its bounds.
+            let mut centres = Vec::new();
+            let mut dot = BezPath::new();
+            for e in d.path.unwrap().elements().iter().chain([&kurbo::PathEl::MoveTo(kurbo::Point::ZERO)]) {
+                if matches!(e, kurbo::PathEl::MoveTo(_)) && !dot.elements().is_empty() {
+                    centres.push(dot.bounding_box().center());
+                    dot = BezPath::new();
+                }
+                dot.push(*e);
+            }
+            centres
+        };
+        let (light, dense) = (dots(0.2), dots(0.9));
+        assert!(!light.is_empty() && dense.len() > light.len(), "{} vs {} dots", light.len(), dense.len());
+        assert!(dense.iter().all(|c| outline.contains(*c)), "a dot outside the rounded box");
+        assert!(dots(0.0).is_empty());
     }
 
     #[test]

@@ -48,7 +48,9 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
 
 ### DesignCraft-Erweiterungen (Rust, im Fork)
 - Absatzschattierung: **Schatten** (`shadingShadowOn/Color/Tint/Offset`), **Korn/Sprenkel**
-  (`shadingSpeckle`, `…Color`, `…Tint`, `shadingSpeckleOverText`), Dialogfelder dazu.
+  (`shadingSpeckle`, `…Color`, `…Tint`, `shadingSpeckleOverText`), Dialogfelder dazu;
+  **Rauschen** (`shadingNoise`, `…Color`, `…Tint`, `…ShadowColor`, `…ShadowTint`; feine Körnung
+  unter dem Text, nur bei High Quality Display; noch ohne Feld im Absatzschattierungs-Dialog).
 - Überlappende Absatzflächen in Textreihenfolge (spätere liegen oben).
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
@@ -87,13 +89,18 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
   Abstände sofort im offenen Dokument; „Gestaltung übernehmen“ macht es fest, Abbrechen nimmt es zurück.
 - **Blasen:** ihre links hellblau, seine rechts hell-koralle, Schatten in der Gegenfarbe,
   Korn in den Blasen (nicht auf Fotos!), genug Abstand (kein Überlappen), Uhrzeit in der Blase,
+  **Rauschen** wie auf der Spalten-Box wahlweise auch auf Blasen und ihren Schatten (Menü: Haken +
+  Regler „Rauschen Chatblasen“, Vorgabe aus, Stärke 0,5; stil.json `rauschen_blasen_an`,
+  `rauschen.blasen`; nicht auf Fotos, nicht auf Reaktions-Pillen). Technik: neue Absatzattribute
+  `shadingNoise`, `…Color`/`…Tint` (Blase: Textfarbe 35 %), `…ShadowColor`/`…ShadowTint` (Papier),
   **keine ✓✓**, kein „bearbeitet“.
 - **Schrift Chat:** **Space Grotesk** (Alternative Work Sans, im Menü wählbar).
 - **Datum:** **Fraunces** SemiBold, blau, **ohne Jahr**, ohne Box, ~50 % Korn über der Schrift;
   links und rechts eine zufällige Riso-Verzierung aus 14 Arten (keine Wiederholung innerhalb von
   5 Datumszeilen), in den Schattentönen der Blasen, **ohne eigenen Schatten**, mittig zur Schrift.
 - **Fotos:** alle Chat-Fotos; Serien als Raster (Reihen als eigene Absätze, keine Überlappung);
-  hohe Bilder werden schmaler statt beschnitten; Riso-Rahmen (Kontur + versetzte zweite Kontur);
+  hohe Bilder werden schmaler statt beschnitten; Riso-Rahmen (Kontur + versetzte zweite Kontur)
+  **dezent in den Blasen-Schattentönen** „Ich/Sie · Schatten“ (55 %, vom User am 21.11.2026 gewählt);
   Videos als Standbild mit ▶ (auf dem Mac via `qlmanage`).
 - **Antworten:** Name der zitierten Person farbig, Zitat in Anführungszeichen (gekürzt),
   bei zitierten Fotos ein Riso-Kamera-Icon.

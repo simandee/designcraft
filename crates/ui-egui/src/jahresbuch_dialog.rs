@@ -46,13 +46,16 @@ fn standard_python() -> String {
 }
 
 /// Felder: (Schlüssel im Fenster, Schlüssel in stil.json, Standard).
-const REGLER: [(&str, &str, &str, f64); 5] = [
+const REGLER: [(&str, &str, &str, f64); 6] = [
     ("kornBlasen", "korn_blasen", "Korn in den Blasen", 0.8),
     ("kornDatum", "korn_datum", "Korn auf dem Datum", 0.4),
     ("rauschenInnen", "rauschen.innen", "Rauschen Innenfläche", 0.35),
     ("rauschenRahmen", "rauschen.rahmen", "Rauschen Rahmen (Blau)", 0.6),
     ("sprenkelRahmen", "sprenkel.rahmen", "Sprenkel Rahmen (Blau)", 1.0),
+    ("rauschenBlasen", "rauschen.blasen", "Rauschen Chatblasen", 0.5),
 ];
+/// Haken: Rauschen auch auf den Chatblasen und ihren Schatten (nicht auf Fotos).
+const RAUSCHEN_BLASEN_AN: (&str, &str) = ("rauschenBlasenAn", "rauschen_blasen_an");
 
 /// Abstände (pt): (Schlüssel im Fenster, Schlüssel in stil.json, Beschriftung, Standard).
 const ABSTAENDE: [(&str, &str, &str, f64); 3] = [
@@ -62,6 +65,8 @@ const ABSTAENDE: [(&str, &str, &str, f64); 3] = [
 ];
 /// Abstand letzte Nachricht → nächstes Datum (pt, gesamt), wie im Hilfsprogramm.
 const DATUM_VOR: f64 = 20.0;
+/// Tonwert der Textfarbe für das Rauschen auf den Blasen (wie `RAUSCHEN_BLASE_TON` im Hilfsprogramm).
+const RAUSCHEN_BLASE_TON: f64 = 0.35;
 /// Welche Gestaltung die Vorschau gerade zeigt.
 const VORSCHAU_FELDER: &str = "_vorschauFelder";
 
@@ -139,6 +144,7 @@ pub fn open(app: &mut DesignApp) -> Result<(), String> {
         f.insert((*k).into(), json!(stil_wert(&stil, sk).and_then(Value::as_f64).unwrap_or(*standard)));
     }
     f.insert("vorschau".into(), json!(false));
+    f.insert(RAUSCHEN_BLASEN_AN.0.into(), json!(stil.get(RAUSCHEN_BLASEN_AN.1).and_then(Value::as_bool).unwrap_or(false)));
     f.insert("ziel".into(), json!(markierter_rahmen(&inspect).is_some()));
     app.ui.dialog = Some(Dialog::new(ID, Value::Object(f)));
     Ok(())
@@ -224,11 +230,17 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     });
 
     kopf(ui, "Korn und Rauschen (0 = aus)");
+    let mut blasen_an = d.b(RAUSCHEN_BLASEN_AN.0);
+    if ui.checkbox(&mut blasen_an, "Rauschen auch auf den Chatblasen und ihren Schatten (nicht auf Fotos)").changed() {
+        d.fields.insert(RAUSCHEN_BLASEN_AN.0.into(), json!(blasen_an));
+    }
     egui::Grid::new("jahresbuch_regler").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
         for (k, _, l, _) in REGLER {
-            ui.label(l);
+            // Der Regler fürs Blasen-Rauschen gilt nur mit Haken.
+            let aktiv = k != "rauschenBlasen" || blasen_an;
+            ui.add_enabled(aktiv, egui::Label::new(l));
             let mut v = d.n(k).unwrap_or(0.0);
-            if ui.add(egui::Slider::new(&mut v, 0.0..=1.0).step_by(0.05)).changed() {
+            if ui.add_enabled(aktiv, egui::Slider::new(&mut v, 0.0..=1.0).step_by(0.05)).changed() {
                 d.fields.insert(k.into(), json!(v));
             }
             ui.end_row();
@@ -300,6 +312,7 @@ fn speichere_stil(d: &Dialog) {
     for (k, sk, _, _) in REGLER.iter().chain(ABSTAENDE.iter()) {
         setze_stil(&mut stil, sk, json!(d.n(k).unwrap_or(0.0)));
     }
+    stil.insert(RAUSCHEN_BLASEN_AN.1.into(), json!(d.b(RAUSCHEN_BLASEN_AN.0)));
     if let Ok(t) = serde_json::to_string_pretty(&Value::Object(stil)) {
         if let Some(o) = stil_pfad().parent() {
             let _ = std::fs::create_dir_all(o);
@@ -343,6 +356,24 @@ fn gestaltung_skript(app: &mut DesignApp, d: &Dialog) -> Result<String, String> 
     for (stil, key) in [("Chat Sie", "kornBlasen"), ("Datum", "kornDatum"), ("Spalte Schatten", "sprenkelRahmen")] {
         if hat("paragraphStyles", stil) {
             b("style.paragraph.edit", json!({"name": stil, "para": {"shadingSpeckle": d.n(key).unwrap_or(0.0)}}));
+        }
+    }
+    // Rauschen auf den Blasen (die übrigen Blasenformate erben es von „Chat Sie“; die
+    // Reaktions-Pillen bleiben ohne).
+    let rauschen = if d.b(RAUSCHEN_BLASEN_AN.0) { d.n("rauschenBlasen").unwrap_or(0.0).clamp(0.0, 1.0) } else { 0.0 };
+    if hat("paragraphStyles", "Chat Sie") {
+        b(
+            "style.paragraph.edit",
+            json!({"name": "Chat Sie", "para": {"shadingNoise": rauschen, "shadingNoiseColor": "Textfarbe", "shadingNoiseTint": RAUSCHEN_BLASE_TON,
+                "shadingNoiseShadowColor": "Papier", "shadingNoiseShadowTint": 1.0}}),
+        );
+    }
+    for seite in ["Sie", "Ich"] {
+        for von in ["von Ihr", "von Mir", "von Beiden"] {
+            let stil = format!("Reaktion {seite} {von}");
+            if hat("paragraphStyles", &stil) {
+                b("style.paragraph.edit", json!({"name": stil, "para": {"shadingNoise": 0.0}}));
+            }
         }
     }
     // Abstände (die übrigen Blasenformate erben sie von „Chat Sie“).
@@ -392,7 +423,7 @@ fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
 /// Die Felder, die die Gestaltung bestimmen: ändert sich einer, wird die Vorschau neu gezeigt.
 fn gestaltungs_felder(d: &Dialog) -> Value {
     let mut f = Map::new();
-    let schluessel = FARBEN.iter().map(|x| x.0).chain(REGLER.iter().map(|x| x.0)).chain(ABSTAENDE.iter().map(|x| x.0)).chain(["schrift"]);
+    let schluessel = FARBEN.iter().map(|x| x.0).chain(REGLER.iter().map(|x| x.0)).chain(ABSTAENDE.iter().map(|x| x.0)).chain(["schrift", RAUSCHEN_BLASEN_AN.0]);
     for k in schluessel {
         f.insert(k.into(), d.fields.get(k).cloned().unwrap_or(Value::Null));
     }

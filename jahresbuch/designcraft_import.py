@@ -74,6 +74,7 @@ DATUM_PT = 10
 ABSTAND = {"datum": 9.5, "gleiche_person": 12, "wechsel": 14.5}
 DATUM_VOR = 20      # Abstand letzte Nachricht -> nächstes Datum (pt, gesamt)
 ALBUM_REIHEN = 3    # Abstand zwischen den Reihen einer Foto-Serie (pt)
+RAUSCHEN_BLASE_TON = 0.35  # Tonwert der Textfarbe für das Rauschen auf den Blasen
 DEKO_MITTE = DATUM_PT * 0.36  # Mitte der Großbuchstaben über der Grundlinie
 
 # Abgeleitete Farben: (Farbfeld, Hauptfarbe, Tonwert). Überschreibbar in stil.json unter "tonwerte".
@@ -552,6 +553,12 @@ class Importer:
         nach = max(0.0, wechsel - datum)
         return datum, nach, gleich, max(0.0, DATUM_VOR - nach)
 
+    def rauschen_blasen(self):
+        """Stärke des Rauschens auf den Chatblasen (0 = aus), aus stil.json."""
+        if not self.stil.get("rauschen_blasen_an", False):
+            return 0.0
+        return float(self.stil.get("rauschen", {}).get("blasen", 0.5))
+
     def formate(self):
         R = lambda r: [{"shape": "rounded", "size": r}] * 4
         vor, nach, gleich, datum_vor = self.abstaende()
@@ -561,7 +568,10 @@ class Importer:
                  "shadingOn": True, "shadingColor": "Sie · Blase", "shadingTint": 1, "shadingOffsets": [3, 6, 4, 6],
                  "shadingWidth": "text", "shadingCorners": R(7), "borderMerge": False,
                  "shadingShadowOn": True, "shadingShadowColor": "Ich · Schatten", "shadingShadowTint": 1, "shadingShadowOffset": [2.6, 2.6],
-                 "shadingSpeckle": float(self.stil.get("korn_blasen", 0.8)), "shadingSpeckleColor": "Papier", "shadingSpeckleTint": 1}
+                 "shadingSpeckle": float(self.stil.get("korn_blasen", 0.8)), "shadingSpeckleColor": "Papier", "shadingSpeckleTint": 1,
+                 # Rauschen wie auf der Spalten-Box: dunkel auf der Blase, hell auf ihrem Schatten (nicht auf Fotos)
+                 "shadingNoise": self.rauschen_blasen(), "shadingNoiseColor": "Textfarbe", "shadingNoiseTint": RAUSCHEN_BLASE_TON,
+                 "shadingNoiseShadowColor": "Papier", "shadingNoiseShadowTint": 1}
         s = self.s
         s("style.paragraph.create", name="Chat Sie", para=blase, chars=chars)
         s("style.paragraph.create", name="Chat Ich", basedOn="Chat Sie", para={"align": "right", "leftIndent": BLASE_EINZUG,
@@ -586,7 +596,7 @@ class Importer:
                 off = [3, 3, 7.5, 3] if basis == "Bild" else [3, 6, 8, 6]
                 s("style.paragraph.create", name=f"{basis} {seite} mit Reaktion", basedOn=f"{basis} {seite}",
                   para={"spaceAfter": 0, **({"shadingOffsets": off} if basis in ("Chat", "Bild") else {})})
-        pille = {"spaceBefore": 4.5, "sameParaStyleSpacing": 4.5, "keepLinesTogether": True, "shadingColor": "Papier · Pille",
+        pille = {"shadingNoise": 0, "spaceBefore": 4.5, "sameParaStyleSpacing": 4.5, "keepLinesTogether": True, "shadingColor": "Papier · Pille",
                  "shadingTint": 1, "shadingOffsets": [1.5, 3.5, 2, 3.5], "shadingCorners": R(7), "shadingShadowOn": False,
                  "borderOn": True, "borderTint": 1, "borderWeights": [0.8] * 4, "borderOffsets": [1.5, 3.5, 2, 3.5],
                  "borderWidth": "text", "borderCorners": R(7)}
@@ -892,8 +902,9 @@ class Importer:
                 self.s("object.cornerOptions", shape="rounded", size=4, ids=[ref])
             teile = [ref]
             if obj.get("rahmen"):
-                farbe = obj["rahmen"]
-                andere = "Farbe Sie" if farbe == "Farbe Ich" else "Farbe Ich"
+                # Dezent: die Schattentöne der Blasen (55 %) statt der vollen Farben
+                farbe = obj["rahmen"].replace("Farbe ", "") + " · Schatten"
+                andere = "Sie · Schatten" if farbe == "Ich · Schatten" else "Ich · Schatten"
                 self.s("object.stroke", swatch=farbe, weight=1.6, align="inside", ids=[ref])
                 v = 1.3
                 k = self.s("frame.create", rect=[X + v, Y + v, X + obj["b"] + v, Y + obj["h"] + v], content="unassigned")
