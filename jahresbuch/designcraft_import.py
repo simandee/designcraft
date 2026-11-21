@@ -368,7 +368,29 @@ class Importer:
             a.text("„", "Zitat Text"); self.lauf(a, text, "Zitat Text", emoji_pt=7.5); a.text("“", "Zitat Text")
         a.text("\u2028")
 
+    def standbild(self, pfad):
+        """Für Videos ein Standbild erzeugen (macOS: Vorschau-Dienst, sonst ffmpeg); Bilder bleiben, wie sie sind."""
+        if not pfad or os.path.splitext(pfad)[1].lower() not in (".mp4", ".mov", ".m4v", ".3gp"):
+            return pfad
+        ziel_ordner = os.path.join(self.arbeit, "standbilder")
+        os.makedirs(ziel_ordner, exist_ok=True)
+        ziel = os.path.join(ziel_ordner, os.path.basename(pfad) + ".png")
+        if not os.path.isfile(ziel):
+            try:
+                if shutil.which("qlmanage"):
+                    subprocess.run(["qlmanage", "-t", "-s", "1200", "-o", ziel_ordner, pfad],
+                                   capture_output=True, timeout=60)
+                elif shutil.which("ffmpeg"):
+                    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", pfad, "-frames:v", "1", ziel],
+                                   capture_output=True, timeout=60)
+            except Exception:
+                pass
+        return ziel if os.path.isfile(ziel) else None
+
     def bildobjekt(self, pfad, b, h, video=False):
+        pfad = self.standbild(pfad)
+        if not pfad:
+            return None
         return {"art": "bild", "pfad": pfad, "b": b, "h": h, "fit": "fillProportionally", "video": video, "y": 0,
                 "rahmen": self.rahmenfarbe}
 
@@ -388,7 +410,7 @@ class Importer:
         for r, reihe in enumerate(reihen):
             a = Absatz(f"Album {s} {variante}" if r else f"Album {s} {variante} Anfang")
             for i, m in enumerate(reihe):
-                p = medium(self.medien, m.get("data"))
+                p = self.standbild(medium(self.medien, m.get("data")))
                 if len(reihe) == 1:
                     w, h = bildmasse(p) if p else (4, 3)
                     obj = self.bildobjekt(p, BILD_B, BILD_B * max(0.56, min(h / w, 0.9)), m.get("message_type") == 2) if p else None
@@ -423,6 +445,7 @@ class Importer:
             elif typ in (1, 2):
                 if not a.laeufe:
                     a.stil = f"Bild {s}"
+                p = self.standbild(p)
                 if p:
                     w, h = bildmasse(p)
                     a.objekt(self.bildobjekt(p, BILD_B, BILD_B * max(0.56, min(h / w, 1.35)), typ == 2))
