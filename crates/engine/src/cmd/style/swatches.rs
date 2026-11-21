@@ -5,6 +5,9 @@ pub(super) fn create_swatch(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(g) = p.get("gradient") {
         return create_gradient_swatch(s, p, g);
     }
+    if let Some(base) = str_param(p, "base") {
+        return create_tint_swatch(s, p, base);
+    }
     let c = p.get("color").ok_or_else(|| bad("swatch.create", "missing color (or gradient)"))?;
     let color = parse_color(c).ok_or_else(|| bad("swatch.create", "bad color"))?;
     let spot = p.get("spot").and_then(Value::as_bool).unwrap_or(false);
@@ -21,6 +24,29 @@ pub(super) fn create_swatch(s: &mut Session, p: &Value) -> Result<Value> {
             named: true,
             hidden: false,
         });
+        Ok(json!({"name": name}))
+    })
+}
+
+/// `swatch.create {base, tint}`: a tint swatch of colour swatch `base` (as the Swatches panel's
+/// New Tint Swatch). It follows its base's colour; its own name defaults to "<base> <tint>%".
+fn create_tint_swatch(s: &mut Session, p: &Value, base: &str) -> Result<Value> {
+    const ID: &str = "swatch.create";
+    let tint = p.get("tint").and_then(Value::as_f64).ok_or_else(|| bad(ID, "a tint swatch needs a tint (0–1)"))?;
+    if !tint.is_finite() || !(0.0..=1.0).contains(&tint) {
+        return Err(bad(ID, "tint: 0 to 1"));
+    }
+    let doc = &s.doc()?.doc;
+    match doc.swatch(base).map(|w| &w.value) {
+        Some(SwatchValue::Color { .. }) => {}
+        Some(_) => return Err(bad(ID, format!("`{base}` is not a colour swatch; a tint swatch needs one"))),
+        None => return Err(bad(ID, format!("no swatch named `{base}`"))),
+    }
+    let name = str_param(p, "name").map(str::to_string).unwrap_or_else(|| format!("{base} {}%", (tint * 100.0).round()));
+    let base = base.to_string();
+    s.edit(|d, _| {
+        let name = Styles::unique_name(|n| d.swatch(n).is_some(), &name);
+        d.swatches.push(Swatch { name: name.clone(), value: SwatchValue::Tint { base, tint: tint as f32 }, locked: false, named: true, hidden: false });
         Ok(json!({"name": name}))
     })
 }
