@@ -381,7 +381,9 @@ impl Renderer {
         }
         let vis = xf.inverse().transform_rect_bbox(f.visible);
         // Decorations under text (shading) and rules.
-        for d in ft.decos.iter().filter(|d| !d.over_text) {
+        // Specks only at High Quality Display (and in output): thousands of dots slow editing.
+        let specks = f.opts.quality == crate::DisplayQuality::High;
+        for d in ft.decos.iter().filter(|d| !d.over_text && (specks || !d.speckle)) {
             if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
                 continue;
             }
@@ -472,7 +474,7 @@ impl Renderer {
             ctx.fill_path(&greek);
         }
         // Decorations set to lie over the text (shading specks over text).
-        for d in ft.decos.iter().filter(|d| d.over_text) {
+        for d in ft.decos.iter().filter(|d| d.over_text && (specks || !d.speckle)) {
             if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
                 continue;
             }

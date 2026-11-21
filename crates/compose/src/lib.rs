@@ -277,6 +277,9 @@ pub struct Deco {
     pub overprint: bool,
     /// Drawn over the text instead of under it (shading specks set to lie over the text).
     pub over_text: bool,
+    /// Shading specks: many small dots, drawn on screen only at High Quality Display (always in
+    /// output), so editing stays quick.
+    pub speckle: bool,
 }
 
 #[derive(Clone, Debug, Default)]
