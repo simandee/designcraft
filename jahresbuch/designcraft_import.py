@@ -46,6 +46,7 @@ SPALTE_B = (SEITE_B - RAND["inside"] - RAND["outside"] - STEG) / 2
 BLASE_EINZUG = 60          # so weit bleibt die andere Seite frei (max. Blasenbreite)
 BILD_B = SPALTE_B - BLASE_EINZUG - 7 - 6  # Breite eines Einzelbilds in der Blase
 EMOJI_PT, EMOJI_GROSS_PT = 9.5, 24
+BILD_MAX_H = 300  # höchstens so hoch wird ein Einzelbild (pt); höhere werden schmaler
 
 URL_RE = re.compile(r"https?://\S+")
 
@@ -447,8 +448,11 @@ class Importer:
                     a.stil = f"Bild {s}"
                 p = self.standbild(p)
                 if p:
+                    # Ganzes Bild zeigen: hohe Bilder (z. B. Screenshots) werden schmaler statt beschnitten
                     w, h = bildmasse(p)
-                    a.objekt(self.bildobjekt(p, BILD_B, BILD_B * max(0.56, min(h / w, 1.35)), typ == 2))
+                    verh = max(0.56, h / w)
+                    hoehe = min(BILD_B * verh, BILD_MAX_H)
+                    a.objekt(self.bildobjekt(p, hoehe / verh, hoehe, typ == 2))
                 else:
                     a.text(("Foto" if typ == 1 else "Video") + " nicht mehr vorhanden", "Hinweis")
                 if m.get("caption"):
