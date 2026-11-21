@@ -186,6 +186,23 @@ attr_set! {
         shading_clip: bool = false,
         /// The shading shows on screen only: not printed or exported.
         shading_nonprinting: bool = false,
+        /// Shading shadow: a solid copy of the shading box drawn behind it, moved right and down by
+        /// `shading_shadow_offset` (pt; negative values move it left or up), in its own colour.
+        shading_shadow_on: bool = false,
+        shading_shadow_color: String = "[Black]".into(),
+        shading_shadow_tint: f32 = 1.0,
+        /// Overprint the shadow (stored; PDF export doesn't overprint yet, as the shading).
+        shading_shadow_overprint: bool = false,
+        shading_shadow_offset: [f64; 2] = [2.0, 2.0],
+        /// Shading speckle: small specks in `shading_speckle_color` scattered over the shading box
+        /// (and its shadow), as if the ink missed the paper in places. 0 = none … 1 = dense.
+        shading_speckle: f64 = 0.0,
+        shading_speckle_color: String = "[Paper]".into(),
+        shading_speckle_tint: f32 = 1.0,
+        /// Overprint the specks (stored; PDF export doesn't overprint yet, as the shading).
+        shading_speckle_overprint: bool = false,
+        /// The specks lie over the paragraph's text and inline objects instead of under them.
+        shading_speckle_over_text: bool = false,
         /// Least space between a spanning or split paragraph and the column text above and below it.
         span_space_before: f64 = 0.0,
         span_space_after: f64 = 0.0,

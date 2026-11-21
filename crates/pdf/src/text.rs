@@ -275,7 +275,7 @@ impl Exporter<'_> {
     ) -> bool {
         // Paragraph shading and rules under the text.
         self.as_artifact(s, |me, s| {
-            for d in ft.decos.iter().filter(|d| !d.nonprinting) {
+            for d in ft.decos.iter().filter(|d| !d.nonprinting && !d.over_text) {
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }
@@ -316,6 +316,15 @@ impl Exporter<'_> {
             self.line_glyphs(s, cs, ft, l, story);
         }
         self.as_artifact(s, |me, s| {
+            // Decorations set to lie over the text (shading specks over text).
+            for d in ft.decos.iter().filter(|d| !d.nonprinting && d.over_text) {
+                if let Some(c) = me.swatch_color(&d.color, d.tint) {
+                    match &d.path {
+                        Some(p) => me.fill_path(s, p, c),
+                        None => me.fill_rect(s, d.rect, c),
+                    }
+                }
+            }
             for (rule, r) in text_rules(cs, ft, false) {
                 if let Some(c) = me.swatch_color(&rule.color, rule.tint) {
                     me.fill_rect(s, r, c);

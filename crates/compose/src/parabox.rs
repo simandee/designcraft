@@ -33,6 +33,29 @@ struct Shading {
     clip: bool,
     nonprinting: bool,
     overprint: bool,
+    shadow: Option<Shadow>,
+    speckle: Option<Speckle>,
+}
+
+/// Small specks of `color` scattered over the shading box (and its shadow).
+#[derive(Clone, Debug, PartialEq)]
+struct Speckle {
+    color: String,
+    tint: f32,
+    overprint: bool,
+    /// 0 … 1: how many of the possible specks are drawn.
+    amount: f64,
+    /// The specks lie over the paragraph's text (and its inline objects), not under it.
+    over_text: bool,
+}
+
+/// A solid copy of the shading box behind it, moved by `offset` (right, down).
+#[derive(Clone, Debug, PartialEq)]
+struct Shadow {
+    color: String,
+    tint: f32,
+    overprint: bool,
+    offset: [f64; 2],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +99,19 @@ impl ParaBox {
             clip: pp.shading_clip,
             nonprinting: pp.shading_nonprinting,
             overprint: pp.shading_overprint,
+            shadow: pp.shading_shadow_on.then(|| Shadow {
+                color: pp.shading_shadow_color.clone(),
+                tint: pp.shading_shadow_tint,
+                overprint: pp.shading_shadow_overprint,
+                offset: pp.shading_shadow_offset.map(|v| finite(v).clamp(-1000.0, 1000.0)),
+            }),
+            speckle: (finite(pp.shading_speckle) > 0.0).then(|| Speckle {
+                color: pp.shading_speckle_color.clone(),
+                tint: pp.shading_speckle_tint,
+                overprint: pp.shading_speckle_overprint,
+                amount: finite(pp.shading_speckle).clamp(0.0, 1.0),
+                over_text: pp.shading_speckle_over_text,
+            }),
         });
         let border = pp.border_on.then(|| Border {
             color: pp.border_color.clone(),
@@ -108,6 +144,8 @@ struct Part<'a> {
 
 /// Draw the boxes of `boxes` (one entry per paragraph) into `out`.
 pub(crate) fn draw(out: &mut ComposedStory, boxes: &[Option<ParaBox>], frames: &[FrameSpec]) {
+    // How many "under" decorations each frame holds so far: they stay at the front of its list.
+    let mut under_count = vec![0usize; out.frames.len()];
     let mut pi = 0;
     while pi < boxes.len() {
         let Some(b) = boxes.get(pi).and_then(Option::as_ref) else {
@@ -121,7 +159,17 @@ pub(crate) fn draw(out: &mut ComposedStory, boxes: &[Option<ParaBox>], frames: &
         let decos = group_decos(out, pi..=end, b, frames);
         for (fi, under, d) in decos {
             if let Some(ft) = out.frames.get_mut(fi) {
-                if under { ft.decos.insert(0, d) } else { ft.decos.push(d) }
+                if under {
+                    // Behind the text and the other decorations, in story order: a later
+                    // paragraph's shading lies over an earlier one's where they overlap.
+                    let at = under_count.get(fi).copied().unwrap_or(0).min(ft.decos.len());
+                    ft.decos.insert(at, d);
+                    if let Some(n) = under_count.get_mut(fi) {
+                        *n += 1;
+                    }
+                } else {
+                    ft.decos.push(d)
+                }
             }
         }
         pi = end + 1;
@@ -142,9 +190,83 @@ fn shading_deco(s: &Shading, part: &Part<'_>, frames: &[FrameSpec], first_part: 
         // Corners stay square where the box is cut by a split.
         let corners = cut_corners(s.corners, !first_part, !last_part);
         let path = (!corners.iter().all(Corner::is_none)).then(|| box_outline(rect, &corners, [true; 4]));
-        return Some(Deco { rect, color: s.color.clone(), tint: s.tint, path, nonprinting: s.nonprinting, overprint: s.overprint });
+        return Some(Deco { rect, color: s.color.clone(), tint: s.tint, path, nonprinting: s.nonprinting, overprint: s.overprint, over_text: false });
     }
     None
+}
+
+/// The shadow of a shading box: the same rectangle and corners, moved and in the shadow's colour.
+fn shadow_deco(sh: &Shadow, shading: &Deco, nonprinting: bool) -> Deco {
+    let [dx, dy] = sh.offset;
+    let shift = kurbo::Affine::translate((dx, dy));
+    Deco {
+        rect: shading.rect + kurbo::Vec2::new(dx, dy),
+        color: sh.color.clone(),
+        tint: sh.tint,
+        path: shading.path.as_ref().map(|p| shift * p.clone()),
+        nonprinting,
+        overprint: sh.overprint,
+        over_text: false,
+    }
+}
+
+/// Grid step of the specks (points): one possible speck per cell.
+const SPECK_STEP: f64 = 1.5;
+/// Most specks drawn over one box (a huge box keeps a bounded path).
+const MAX_SPECKS: usize = 6_000;
+
+/// A stable pseudo-random number in 0..1 for grid cell (`ix`, `iy`) and channel `k`.
+fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
+    let mut h = (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (iy as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ k.wrapping_mul(0x1656_67B1_9E37_79F9);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+    h ^= h >> 33;
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// The specks over a box: small round dots of varied size on a jittered grid, kept inside the
+/// box's outline. The grid is anchored to the frame, so the pattern doesn't change when the text
+/// around it does.
+fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
+    let rect = under.rect;
+    let outline = under.path.clone().unwrap_or_else(|| rect.to_path(TOL));
+    let mut path = BezPath::new();
+    let mut count = 0;
+    let (x0, y0) = ((rect.x0 / SPECK_STEP).floor() as i64, (rect.y0 / SPECK_STEP).floor() as i64);
+    let (x1, y1) = ((rect.x1 / SPECK_STEP).ceil() as i64, (rect.y1 / SPECK_STEP).ceil() as i64);
+    // Up to a third of the cells at full amount: beyond that the specks read as a tint.
+    let chance = sp.amount * 0.33;
+    'rows: for iy in y0..y1 {
+        for ix in x0..x1 {
+            if speck_noise(ix, iy, 0) >= chance {
+                continue;
+            }
+            let c = kurbo::Point::new(
+                (ix as f64 + speck_noise(ix, iy, 1)) * SPECK_STEP,
+                (iy as f64 + speck_noise(ix, iy, 2)) * SPECK_STEP,
+            );
+            // Mostly fine dust, now and then a bigger fleck.
+            let size = speck_noise(ix, iy, 3);
+            let r = if size > 0.93 { 0.45 + size * 0.35 } else { 0.12 + size * 0.28 };
+            if !outline.contains(c) || !rect.inset(-0.0).contains(c) {
+                continue;
+            }
+            path.extend(kurbo::Circle::new(c, r).path_elements(0.05));
+            count += 1;
+            if count >= MAX_SPECKS {
+                break 'rows;
+            }
+        }
+    }
+    (count > 0).then(|| Deco {
+        rect,
+        color: sp.color.clone(),
+        tint: sp.tint,
+        path: Some(path),
+        nonprinting: under.nonprinting,
+        overprint: sp.overprint,
+        over_text: sp.over_text,
+    })
 }
 
 /// The border strokes (and plain edges) for one part of a paragraph run, pushed onto `decos`.
@@ -157,11 +279,11 @@ fn border_decos(bd: &Border, part: &Part<'_>, first_part: bool, last_part: bool,
     for (path, gap) in border_paths(bd, o, open_top, open_bottom) {
         let (color, tint, overprint) =
             if gap { (bd.gap_color.clone(), bd.gap_tint, bd.gap_overprint) } else { (bd.color.clone(), bd.tint, bd.overprint) };
-        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), nonprinting: false, overprint }));
+        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), nonprinting: false, overprint, over_text: false }));
     }
     if is_plain(bd, open_top, open_bottom) {
         decos.extend(plain_edges(bd, o, open_top, open_bottom).into_iter().map(|rect| {
-            (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, path: None, nonprinting: false, overprint: bd.overprint })
+            (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, path: None, nonprinting: false, overprint: bd.overprint, over_text: false })
         }));
     }
 }
@@ -182,7 +304,16 @@ fn group_decos(out: &ComposedStory, paras: std::ops::RangeInclusive<usize>, b: &
         if let Some(s) = &b.shading
             && let Some(deco) = shading_deco(s, part, frames, first_part, last_part)
         {
+            // The shadow goes first: "under" decorations are drawn in the order they are pushed.
+            if let Some(sh) = &s.shadow {
+                let shadow = shadow_deco(sh, &deco, s.nonprinting);
+                let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &shadow));
+                decos.push((part.fi, true, shadow));
+                decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
+            }
+            let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &deco));
             decos.push((part.fi, true, deco));
+            decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
         }
         if let Some(bd) = &b.border {
             border_decos(bd, part, first_part, last_part, &mut decos);

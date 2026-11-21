@@ -6889,9 +6889,58 @@ fn border_shading(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, doc
             } else {
                 para_check(ui, d, pv, "shadingClip", crate::i18n::tr(lang, "Clip to Frame"));
                 para_check(ui, d, pv, "shadingNonprinting", crate::i18n::tr(lang, "Do not Print or Export"));
+                shading_shadow(lang, ui, d, pv, doc, units);
             }
         });
     });
+}
+
+/// Paragraph Shading › Shadow: a solid copy of the shading box behind it, in its own colour,
+/// moved by an X and Y offset.
+fn shading_shadow(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, doc: &designcraft_doc::Document, units: Unit) {
+    ui.add_space(8.0);
+    para_check(ui, d, pv, "shadingShadowOn", crate::i18n::tr(lang, "Shadow"));
+    let on = para_value(d, pv, "shadingShadowOn").as_bool().unwrap_or(false);
+    ui.add_enabled_ui(on, |ui| {
+        egui::Grid::new("psshadow").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+            let (color, tint) = (crate::i18n::tr(lang, "Color:"), crate::i18n::tr(lang, "Tint:"));
+            para_color_tint(lang, ui, d, pv, doc, ("shadingShadowColor", "shadingShadowTint", "shadingShadowOverprint"), (color, tint), true);
+            let mut offset: [f64; 2] = serde_json::from_value(para_value(d, pv, "shadingShadowOffset")).unwrap_or([2.0, 2.0]);
+            let mut changed = false;
+            for (i, label) in ["X Offset:", "Y Offset:"].into_iter().enumerate() {
+                crate::rtl::label(ui, crate::i18n::tr(lang, label));
+                if let Some(v) = crate::widgets::spin_measure(ui, &format!("psshadowoffset{i}"), offset.get(i).copied(), units, 72.0) {
+                    if let Some(o) = offset.get_mut(i) {
+                        *o = if v.is_finite() { v.clamp(-1000.0, 1000.0) } else { 0.0 };
+                    }
+                    changed = true;
+                }
+                ui.end_row();
+            }
+            if changed {
+                para_set(d, "shadingShadowOffset", json!(offset));
+            }
+        });
+    });
+    shading_speckle(lang, ui, d, pv, doc);
+}
+
+/// Paragraph Shading › Speckle: small specks scattered over the shading box (and its shadow).
+fn shading_speckle(lang: &str, ui: &mut egui::Ui, d: &mut Dialog, pv: &Value, doc: &designcraft_doc::Document) {
+    ui.add_space(8.0);
+    egui::Grid::new("psspeckle").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+        crate::rtl::label(ui, crate::i18n::tr(lang, "Speckle:"));
+        let amount = para_value(d, pv, "shadingSpeckle").as_f64().map(|v| (v * 1000.0).round() / 10.0);
+        let field = crate::widgets::NumField::number("psshadingSpeckle", amount, "%", 0).width(96.0).spinner().step(10.0).range(0.0, 100.0);
+        if let Some(v) = field.show(ui) {
+            para_set(d, "shadingSpeckle", json!(if v.is_finite() { (v / 100.0).clamp(0.0, 1.0) } else { 0.0 }));
+        }
+        ui.end_row();
+        let on = para_value(d, pv, "shadingSpeckle").as_f64().is_some_and(|v| v > 0.0);
+        let (color, tint) = (crate::i18n::tr(lang, "Color:"), crate::i18n::tr(lang, "Tint:"));
+        para_color_tint(lang, ui, d, pv, doc, ("shadingSpeckleColor", "shadingSpeckleTint", "shadingSpeckleOverprint"), (color, tint), on);
+    });
+    para_check(ui, d, pv, "shadingSpeckleOverText", crate::i18n::tr(lang, "Speckle Over Text"));
 }
 
 /// The value of dialog field `k`, or `base` when the dialog has not set it.

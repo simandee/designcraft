@@ -381,7 +381,7 @@ impl Renderer {
         }
         let vis = xf.inverse().transform_rect_bbox(f.visible);
         // Decorations under text (shading) and rules.
-        for d in &ft.decos {
+        for d in ft.decos.iter().filter(|d| !d.over_text) {
             if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
                 continue;
             }
@@ -470,6 +470,20 @@ impl Renderer {
         if !greek.elements().is_empty() {
             ctx.set_paint(color_of(&designcraft_color::Color::gray(0.35), 0.5));
             ctx.fill_path(&greek);
+        }
+        // Decorations set to lie over the text (shading specks over text).
+        for d in ft.decos.iter().filter(|d| d.over_text) {
+            if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
+                continue;
+            }
+            if let Some(c) = doc.resolve_color(&d.color, d.tint) {
+                ctx.set_transform(m);
+                ctx.set_paint(color_of(&c, 1.0));
+                match &d.path {
+                    Some(p) => ctx.fill_path(p),
+                    None => ctx.fill_rect(&d.rect),
+                }
+            }
         }
         for n in &ft.notes {
             if let Some(nft) = n.text.frames.first() {

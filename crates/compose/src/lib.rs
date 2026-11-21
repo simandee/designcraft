@@ -275,6 +275,8 @@ pub struct Deco {
     pub nonprinting: bool,
     /// Set to overprint (paragraph shading or border); PDF export doesn't overprint yet.
     pub overprint: bool,
+    /// Drawn over the text instead of under it (shading specks set to lie over the text).
+    pub over_text: bool,
 }
 
 #[derive(Clone, Debug, Default)]
