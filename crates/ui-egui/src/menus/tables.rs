@@ -640,7 +640,7 @@ pub const MENUS: &[(&str, &[&str])] = &[
             "ui:window.brightness",
         ],
     ),
-    ("Jahresbuch", &["ui:jahresbuch.chatImport"]),
+    ("Jahresbuch", &["ui:jahresbuch.chatImport", "ui:jahresbuch.chatDesign"]),
     (
         "Help",
         &[

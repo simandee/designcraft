@@ -59,9 +59,11 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
   nicht – sonst ruckelt das Tippen. Export/Druck immer mit Korn.
-- **Menü „Jahresbuch ▸ WhatsApp-Chat einfließen lassen …“** (`crates/ui-egui/src/jahresbuch_dialog.rs`):
-  Export, Medienordner, Zeitraum, 4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel und Abstände,
-  Haken „Vorschau“, Knopf „Gestaltung übernehmen“. Ruft `jahresbuch/designcraft_import.py` auf
+- **Menü „Jahresbuch“** (`crates/ui-egui/src/jahresbuch_dialog.rs`), zwei Punkte (User-Wunsch 21.11.2026):
+  **„WhatsApp-Chat einfügen …“** (Export, Medienordner, Zeitraum; Knopf „Chat einfügen“) und
+  **„Chat-Gestaltung …“** (4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel und Abstände,
+  Haken „Vorschau“, OK übernimmt, Abbrechen nimmt zurück; nur wenn das Dokument schon einen Chat hat).
+  Das Einfügen ruft `jahresbuch/designcraft_import.py` auf
   (Python aus `~/WhatsApp-Export/.venv`), führt dessen Skripte im **offenen Buch** aus:
   Einrichtung (Farbfelder, Formate, Mustervorlage **J-Chat**, basiert auf der ersten Mustervorlage
   des Buchs → Seitenzahl kommt vom Buch), dann der Chat in den **markierten leeren Textrahmen**
@@ -137,7 +139,9 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
    1 hoch seitenfüllend · 2×2 hoch · 1 randlos; Seitenzahl blau/bei randlos weiß), dann freie Texte.
 5. Neue offizielle DesignCraft-Versionen übernehmen: **nur auf Wunsch** des Users (`upstream` mergen).
 6. Später evtl.: Erweiterungen dem DesignCraft-Projekt vorschlagen (entscheidet der User).
-7. Bekannte Kleinigkeit: Ein in einer Spalte zu hohes Einzelbild rutscht samt Datum in die nächste
+7. **Gesammelter Wunsch:** Chat-Fotos als bearbeitbare Objekte (Größe ändern, damit ein Bild noch
+   ans Ende einer Spalte passt statt Leerraum zu lassen). Noch nicht umgesetzt.
+8. Bekannte Kleinigkeit: Ein in einer Spalte zu hohes Einzelbild rutscht samt Datum in die nächste
    Spalte und lässt Leerraum.
 
 ## Testdaten in der Cloud

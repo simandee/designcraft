@@ -1,8 +1,9 @@
-//! Jahresbuch › WhatsApp-Chat einfließen lassen …: ein WhatsApp-Export (JSON und Medienordner)
-//! fließt als Chat im Riso-Stil in den markierten Textrahmen des offenen Buchs (oder auf neue
-//! Chat-Seiten am Ende) und läuft durch verkettete Rahmen weiter. Farben, Schrift, Korn und
-//! Rauschen und Abstände sind hier einstellbar, mit Vorschau im offenen Dokument, und lassen sich
-//! auch ohne Import aufs Dokument anwenden.
+//! Jahresbuch › WhatsApp-Chat einfügen …: ein WhatsApp-Export (JSON und Medienordner) kommt als
+//! Chat im Riso-Stil in den markierten Textrahmen des offenen Buchs (oder auf neue Chat-Seiten am
+//! Ende) und läuft durch verkettete Rahmen weiter.
+//!
+//! Jahresbuch › Chat-Gestaltung …: Farben, Schrift, Korn, Rauschen und Abstände eines schon
+//! eingefügten Chats, mit Vorschau im offenen Dokument; OK übernimmt, Abbrechen nimmt zurück.
 //!
 //! Den Chat baut das Hilfsprogramm `jahresbuch/designcraft_import.py` (Python) als Befehlsskript;
 //! dieses Fenster ruft es auf und führt die Skripte im offenen Dokument aus.
@@ -16,8 +17,10 @@ use crate::app::file_dialogs::Bound;
 use crate::dialogs::Dialog;
 use crate::theme::semibold;
 
-/// Das Fenster.
+/// Das Fenster zum Einfügen.
 pub const ID: &str = "jahresbuch";
+/// Das Fenster für die Gestaltung eines eingefügten Chats.
+pub const GESTALTUNG_ID: &str = "jahresbuchGestaltung";
 
 /// Der Ordner des Hilfsprogramms im Quellcode (die App wird auf dem eigenen Rechner gebaut).
 fn ordner() -> PathBuf {
@@ -118,8 +121,23 @@ fn markierter_rahmen(inspect: &Value) -> Option<(u64, u64)> {
     None
 }
 
-/// Das Fenster öffnen, mit den zuletzt benutzten Einstellungen (stil.json).
+/// Das Fenster zum Einfügen öffnen, mit den zuletzt benutzten Einstellungen (stil.json).
 pub fn open(app: &mut DesignApp) -> Result<(), String> {
+    oeffnen(app, ID)
+}
+
+/// Das Gestaltungsfenster öffnen; nur in einem Dokument, das schon einen Chat enthält.
+pub fn open_gestaltung(app: &mut DesignApp) -> Result<(), String> {
+    let hat_chat = app.session.execute("document.inspect", &json!({})).ok().is_some_and(|i| {
+        i["swatches"].as_array().is_some_and(|a| a.iter().any(|v| v == "Farbe Ich"))
+    });
+    if app.session.active().is_some() && !hat_chat {
+        return Err("Im Dokument ist noch kein Chat – erst Jahresbuch ▸ WhatsApp-Chat einfügen …".into());
+    }
+    oeffnen(app, GESTALTUNG_ID)
+}
+
+fn oeffnen(app: &mut DesignApp, id: &str) -> Result<(), String> {
     if app.session.active().is_none() {
         return Err("Zuerst das Buch öffnen (oder ein neues Dokument anlegen).".into());
     }
@@ -143,7 +161,7 @@ pub fn open(app: &mut DesignApp) -> Result<(), String> {
     f.insert("vorschau".into(), json!(false));
     f.insert(RAUSCHEN_BLASEN_AN.0.into(), json!(stil.get(RAUSCHEN_BLASEN_AN.1).and_then(Value::as_bool).unwrap_or(false)));
     f.insert("ziel".into(), json!(markierter_rahmen(&inspect).is_some()));
-    app.ui.dialog = Some(Dialog::new(ID, Value::Object(f)));
+    app.ui.dialog = Some(Dialog::new(id, Value::Object(f)));
     Ok(())
 }
 
@@ -173,12 +191,22 @@ fn pfad_feld(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog, key: &str, 
     });
 }
 
-/// Das Fenster zeichnen.
+fn kopf(ui: &mut egui::Ui, t: &str) {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(t).font(semibold(13.0)));
+}
+
+/// Ein Fenster zeichnen: Einfügen oder Gestaltung.
 pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
-    let kopf = |ui: &mut egui::Ui, t: &str| {
-        ui.add_space(6.0);
-        ui.label(egui::RichText::new(t).font(semibold(13.0)));
-    };
+    if d.id == GESTALTUNG_ID {
+        show_gestaltung(app, ui, d);
+    } else {
+        show_einfuegen(app, ui, d);
+    }
+}
+
+/// Einfügen: Export, Medien, Zeitraum. Die Gestaltung kommt aus den gespeicherten Einstellungen.
+fn show_einfuegen(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     kopf(ui, "Chat");
     ui.label("WhatsApp-Export (JSON):");
     pfad_feld(app, ui, d, "export", false);
@@ -196,13 +224,26 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     });
     ui.label(
         egui::RichText::new(if d.b("ziel") {
-            "Ziel: der markierte Textrahmen. Der Chat fließt dort hinein und über verkettete Rahmen weiter; bei Bedarf kommen Chat-Seiten am Ende dazu."
+            "Ziel: der markierte Textrahmen. Der Chat kommt dort hinein und läuft über verkettete Rahmen weiter; bei Bedarf kommen Chat-Seiten am Ende dazu."
         } else {
-            "Ziel: neue Chat-Seiten am Ende des Dokuments. (Tipp: Erst einen Textrahmen markieren, dann fließt der Chat dort hinein.)"
+            "Ziel: neue Chat-Seiten am Ende des Dokuments. (Tipp: Erst einen Textrahmen markieren, dann kommt der Chat dort hinein.)"
         })
         .small(),
     );
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("Farben, Schrift, Korn, Rauschen und Abstände: Jahresbuch ▸ Chat-Gestaltung …").small());
+    ui.collapsing("Erweitert", |ui| {
+        ui.label("Python:");
+        let mut s = d.s("python");
+        if ui.add(egui::TextEdit::singleline(&mut s).desired_width(380.0)).changed() {
+            d.fields.insert("python".into(), json!(s));
+        }
+        ui.label(egui::RichText::new(format!("Hilfsprogramm: {}", ordner().join("designcraft_import.py").display())).small());
+    });
+}
 
+/// Gestaltung des Chats im offenen Dokument, mit Vorschau.
+fn show_gestaltung(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     kopf(ui, "Farben");
     ui.horizontal_wrapped(|ui| {
         for (k, _, l, standard) in FARBEN {
@@ -261,30 +302,29 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
         let mut an = d.b("vorschau");
         if ui
             .checkbox(&mut an, "Vorschau")
-            .on_hover_text("Zeigt Farben, Schrift, Korn, Rauschen und Abstände sofort im Chat dieses Dokuments. Abbrechen nimmt alles zurück.")
+            .on_hover_text("Zeigt die Änderungen sofort im Chat dieses Dokuments. OK übernimmt sie, Abbrechen nimmt alles zurück.")
             .changed()
         {
             d.fields.insert("vorschau".into(), json!(an));
         }
-        ui.add_space(12.0);
-        if ui.button("Gestaltung übernehmen").clicked() {
-            vorschau_beenden(app, d);
-            speichere_stil(d);
-            match gestaltung_anwenden(app, d) {
-                Ok(()) => app.status("Gestaltung übernommen."),
-                Err(e) => app.status(e),
-            }
-        }
     });
     vorschau(app, d);
-    ui.collapsing("Erweitert", |ui| {
-        ui.label("Python:");
-        let mut s = d.s("python");
-        if ui.add(egui::TextEdit::singleline(&mut s).desired_width(380.0)).changed() {
-            d.fields.insert("python".into(), json!(s));
-        }
-        ui.label(egui::RichText::new(format!("Hilfsprogramm: {}", ordner().join("designcraft_import.py").display())).small());
-    });
+}
+
+/// OK im Gestaltungsfenster: die Vorschau zurücknehmen und die Gestaltung fest anwenden (ein
+/// Rückgängig-Schritt), die Einstellungen für spätere Chats merken.
+pub fn confirm_gestaltung(app: &mut DesignApp, d: &Dialog) -> Result<Value, String> {
+    speichere_stil(d);
+    gestaltung_uebernehmen(app, d)?;
+    app.status("Jahresbuch: Gestaltung übernommen.");
+    Ok(Value::Null)
+}
+
+fn gestaltung_uebernehmen(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
+    if d.fields.contains_key(crate::dialogs::PREVIEWED) {
+        app.session.cancel_interaction();
+    }
+    gestaltung_anwenden(app, d)
 }
 
 fn hex_rgb(s: &str) -> Option<[u8; 3]> {
@@ -654,6 +694,28 @@ mod tests {
         assert!(abstand > 0.0 && abstand < seite_b / 2.0, "zweite Spalte derselben Seite: {abstand} pt weiter rechts");
     }
 
+    /// OK im Gestaltungsfenster übernimmt die Einstellungen, ohne den Chat noch einmal einzufügen.
+    #[test]
+    fn gestaltung_ok_aendert_nur_die_gestaltung() {
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"preset": "A4", "pages": 1})).unwrap();
+        assert!(open_gestaltung(&mut app).is_err(), "ohne Chat gibt es nichts zu gestalten");
+        app.run("swatch.create", json!({"name": "Farbe Ich", "color": "#E8493A"})).unwrap();
+        app.run("style.paragraph.create", json!({"name": "Chat Sie", "para": {"sameParaStyleSpacing": 12}})).unwrap();
+        let seiten = app.session.execute("document.inspect", &json!({})).unwrap()["pageCount"].clone();
+        open_gestaltung(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        d.fields.insert("abstandGleich".into(), json!(20.0));
+        d.fields.insert("vorschau".into(), json!(true));
+        vorschau(&mut app, &mut d);
+        // Wie OK, nur ohne stil.json im Heimordner zu schreiben.
+        gestaltung_uebernehmen(&mut app, &d).unwrap();
+        assert!(gleiche_person(&app).unwrap() > 12.0, "die Änderung ist übernommen");
+        assert!(app.session.active().unwrap().interaction.is_none(), "keine Vorschau mehr offen");
+        let doc = app.session.execute("document.inspect", &json!({})).unwrap();
+        assert_eq!(doc["pageCount"], seiten, "kein Chat eingefügt, keine Seiten dazu");
+    }
+
     fn gleiche_person(app: &DesignApp) -> Option<f64> {
         let doc = &app.session.active().unwrap().doc;
         doc.styles.paragraph.iter().find(|s| s.name == "Chat Sie").and_then(|s| s.para.same_para_style_spacing.flatten())
@@ -668,7 +730,7 @@ mod tests {
         app.run("swatch.create", json!({"name": "Farbe Ich", "color": "#E8493A"})).unwrap();
         app.run("style.paragraph.create", json!({"name": "Chat Sie", "para": {"sameParaStyleSpacing": 12}})).unwrap();
         let vorher = app.session.active().unwrap().doc.clone();
-        open(&mut app).unwrap();
+        open_gestaltung(&mut app).unwrap();
         let mut d = app.ui.dialog.take().unwrap();
         d.fields.insert("abstandGleich".into(), json!(20.0));
         vorschau(&mut app, &mut d);

@@ -56,9 +56,15 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("app.saveSwatches", "Save Swatches for Exchange…", None, "{path?} — write the colour swatches as .ase"),
     (
         "jahresbuch.chatImport",
-        "WhatsApp-Chat einfließen lassen …",
+        "WhatsApp-Chat einfügen …",
         None,
-        "{} — Jahresbuch: a WhatsApp chat export flows into the selected text frame (or new chat pages), riso style",
+        "{} — Jahresbuch: a WhatsApp chat export goes into the selected text frame (or new chat pages), riso style",
+    ),
+    (
+        "jahresbuch.chatDesign",
+        "Chat-Gestaltung …",
+        None,
+        "{} — Jahresbuch: colours, font, grain, noise and spacing of the chat in this document, with preview",
     ),
     ("app.exportPng", "Export Page as PNG…", Some("Cmd+E"), "{}"),
     ("app.exportIdml", "Export IDML…", None, "{path?} — InDesign Markup (IDML) package"),
