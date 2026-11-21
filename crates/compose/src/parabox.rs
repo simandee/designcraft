@@ -213,7 +213,7 @@ fn shadow_deco(sh: &Shadow, shading: &Deco, nonprinting: bool) -> Deco {
 /// Grid step of the specks (points): one possible speck per cell.
 const SPECK_STEP: f64 = 1.5;
 /// Most specks drawn over one box (a huge box keeps a bounded path).
-const MAX_SPECKS: usize = 6_000;
+const MAX_SPECKS: usize = 80_000;
 
 /// A stable pseudo-random number in 0..1 for grid cell (`ix`, `iy`) and channel `k`.
 fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
