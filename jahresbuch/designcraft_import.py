@@ -97,6 +97,20 @@ def blasen_ecken(seite):
     return [rund, rund, spitz, rund] if seite == "Ich" else [rund, rund, rund, spitz]
 
 
+# Farben für weitere Personen in Gruppenchats (in der Reihenfolge, in der sie am meisten schreiben)
+PERSONEN_FARBEN = ["#3554E0", "#2E8B57", "#9B4DCA", "#E0952B", "#1F9BB4", "#C2387A", "#6B8E23", "#8B5A2B"]
+
+
+def farbe_von(key):
+    """Hauptfarbe einer Person: im Zweier-Chat „Farbe Ich“/„Farbe Sie“, sonst „<Person> · Farbe“."""
+    return "Farbe Ich" if key == "Ich" else "Farbe Sie" if key == "Sie" else f"{key} · Farbe"
+
+
+def schatten_von(key):
+    """Schattenton einer Person (55 % ihrer Farbe)."""
+    return f"{key} · Schatten"
+
+
 DEKO_ARTEN = ["balken", "punkte", "rauten", "raster", "sterne", "pillen", "kreuze", "ringe", "dreiecke", "zickzack",
               "treppe", "blumen", "konfetti", "streifen"]
 
@@ -282,11 +296,63 @@ class Importer:
             seitenformat(float(self.dok["settings"]["pageWidth"]), float(self.dok["settings"]["pageHeight"]))
         self.parent_index = 0
         self.album_nr = 0
-        self.rahmenfarbe = "Farbe Sie"
+        self.rahmenfarbe = ("Sie · Schatten", "Ich · Schatten")
         self._bbox = None
+        # Mehrere Chats in einem Buch: ab dem zweiten bekommen alle Format- und Farbnamen ein Kürzel
+        # („Chat 2/…“ bei Formaten, „Chat 2 · …“ bei Farbfeldern), der erste behält die alten Namen.
+        self.nummer = int(getattr(args, "nummer", None) or 1)
+        self.vorlage = "J-Chat" if self.nummer == 1 else f"J{self.nummer}-Chat"
+        # Personen: [{key, name, ids, farbe}]; „Ich“ ist immer dabei. Kommen aus --personen (vom
+        # Jahresbuch-Fenster) oder werden aus dem Chat ermittelt.
+        self.personen = None
+        self.gruppe = False
 
     # ---------------------------------------------------------------- Befehle
+    # Schlüssel, deren Werte Farbfeld-Namen sind (in Formaten und Befehlen)
+    FARB_SCHLUESSEL = {"swatch", "base", "fill", "stroke", "shadingColor", "shadingShadowColor", "shadingSpeckleColor", "borderColor",
+                       "borderGapColor", "shadingNoiseColor"}
+
+    def n_stil(self, name):
+        """Format-Name dieses Chats."""
+        if self.nummer == 1 or not isinstance(name, str) or name.startswith("["):
+            return name
+        return f"Chat {self.nummer}/{name}"
+
+    def n_farbe(self, name):
+        """Farbfeld-Name (und Script-Label der Mustervorlage) dieses Chats."""
+        if self.nummer == 1 or not isinstance(name, str) or name.startswith("[") or name.startswith("$"):
+            return name
+        return f"Chat {self.nummer} · {name}"
+
+    def _kuerzel(self, cmd, p):
+        """Format- und Farbnamen eines Befehls auf diesen Chat umschreiben."""
+        if self.nummer == 1:
+            return p
+        p = dict(p)
+        if cmd.startswith("style."):
+            for k in ("name", "basedOn", "nextStyle"):
+                if k in p:
+                    p[k] = self.n_stil(p[k])
+            for teil in ("para", "chars", "attrs"):
+                if isinstance(p.get(teil), dict):
+                    p[teil] = {k: (self.n_farbe(v) if k in self.FARB_SCHLUESSEL else v) for k, v in p[teil].items()}
+        elif cmd == "swatch.create":
+            p["name"] = self.n_farbe(p["name"])
+            if "base" in p:
+                p["base"] = self.n_farbe(p["base"])
+        elif cmd == "swatch.newColorGroup":
+            p["name"] = f"Jahresbuch – Chat {self.nummer}"
+            p["swatches"] = [self.n_farbe(x) for x in p["swatches"]]
+        elif cmd in ("object.fill", "object.stroke"):
+            p["swatch"] = self.n_farbe(p.get("swatch"))
+        elif cmd == "object.label" and p.get("label") not in ("Emoji", "Verzierung"):
+            p["label"] = self.n_farbe(p.get("label"))
+        elif cmd == "type.char" and isinstance(p.get("attrs"), dict):
+            p["attrs"] = {k: (self.n_farbe(v) if k in self.FARB_SCHLUESSEL else v) for k, v in p["attrs"].items()}
+        return p
+
     def s(self, cmd, **p):
+        p = self._kuerzel(cmd, p)
         # In ein bestehendes Dokument: vorhandene Farbfelder und Formate bleiben, wie sie sind
         # (so gehen eigene Anpassungen beim erneuten Import nicht verloren).
         if self.dok is not None:
@@ -324,10 +390,42 @@ class Importer:
         a.text(text[pos:], cs)
 
     # ---------------------------------------------------------------- Nachrichten
-    def nachrichten(self):
+    def chat_daten(self):
+        """Der gewählte Chat aus dem Export (--chat: seine Kennung; sonst der erste)."""
         daten = json.load(open(self.a.export, encoding="utf-8"))
-        chat = next(iter(daten.values()))
+        jid = getattr(self.a, "chat", None)
+        return daten.get(jid) if jid and jid in daten else next(iter(daten.values()))
+
+    def personen_ermitteln(self, msgs):
+        """Personen des Chats: aus --personen oder aus den Absendern. Zweier-Chat: „Ich“ und „Sie“;
+        Gruppe (mehrere Absender): „Ich“ und „Person 1“, „Person 2“ … (nach Anzahl Nachrichten)."""
+        vorgabe = getattr(self.a, "personen", None)
+        if vorgabe:
+            self.personen = json.loads(vorgabe) if vorgabe.strip().startswith("[") else json.load(open(vorgabe, encoding="utf-8"))
+        else:
+            zaehler = {}
+            for m in msgs:
+                if not m.get("from_me") and m.get("sender"):
+                    zaehler[m["sender"]] = zaehler.get(m["sender"], 0) + 1
+            andere = sorted(zaehler, key=lambda k: -zaehler[k])
+            self.personen = [{"key": "Ich", "name": ICH, "ids": [], "farbe": self.stil.get("farbe_ich", "#E8493A")}]
+            if len(andere) > 1:
+                for i, sender in enumerate(andere):
+                    self.personen.append({"key": f"Person {i + 1}", "name": sender, "ids": [sender],
+                                          "farbe": PERSONEN_FARBEN[i % len(PERSONEN_FARBEN)]})
+            else:
+                self.personen.append({"key": "Sie", "name": andere[0] if andere else SIE, "ids": andere,
+                                      "farbe": self.stil.get("farbe_sie", "#3554E0")})
+        self.gruppe = any(p["key"] not in ("Ich", "Sie") for p in self.personen)
+        self._nach_id = {i: p["key"] for p in self.personen for i in p.get("ids", [])}
+
+    def person(self, key):
+        return next((p for p in self.personen if p["key"] == key), None)
+
+    def nachrichten(self):
+        chat = self.chat_daten()
         msgs = sorted(chat["messages"].values(), key=lambda m: m["timestamp"])
+        self.personen_ermitteln(msgs)
         von = date.fromisoformat(self.a.von) if self.a.von else None
         bis = date.fromisoformat(self.a.bis) if self.a.bis else None
         sichtbar = [m for m in msgs if m.get("message_type") not in AUSBLENDEN
@@ -342,7 +440,7 @@ class Importer:
         gr = []
         for m in msgs:
             g = gr[-1] if gr else None
-            if (g and album(m) and album(g[-1]) and g[-1]["from_me"] == m["from_me"]
+            if (g and album(m) and album(g[-1]) and self.seite(g[-1]) == self.seite(m)
                     and m["timestamp"] - g[-1]["timestamp"] <= 120 and zeit(m).date() == zeit(g[-1]).date()):
                 g.append(m)
             else:
@@ -382,7 +480,18 @@ class Importer:
         self.absaetze.append(a)
 
     def seite(self, m):
-        return "Ich" if m["from_me"] else "Sie"
+        """Wer die Nachricht geschrieben hat (Personen-Schlüssel, zugleich Teil der Formatnamen)."""
+        if m.get("from_me"):
+            return "Ich"
+        if not self.gruppe:
+            return "Sie"
+        return self._nach_id.get(m.get("sender"), self.personen[1]["key"] if len(self.personen) > 1 else "Sie")
+
+    def namenszeile(self, a, key):
+        """Gruppenchat: der Name über der Blase, in der Farbe der Person."""
+        if self.gruppe and key != "Ich":
+            a.text(self.person(key)["name"], f"Name {key}")
+            a.text("\u2028")
 
     def zeitlauf(self, a, m):
         a.text("\u2028" + zeit(m).strftime("%H:%M"), "Zeit")
@@ -393,22 +502,28 @@ class Importer:
             return
         a.stil += " mit Reaktion"
         vons = {x.get("von") for x in r}
-        von = "von Ihr" if vons == {"sie"} else "von Mir" if vons == {"ich"} else "von Beiden"
-        p = Absatz(f"Reaktion {self.seite(m)} {von}")
+        seite = "Ich" if self.seite(m) == "Ich" else "Sie"
+        if not self.gruppe:
+            von = "von Ihr" if vons == {"sie"} else "von Mir" if vons == {"ich"} else "von Beiden"
+        else:
+            keys = {"Ich" if v == "ich" else self._nach_id.get(v) for v in vons}
+            von = "von Mir" if keys == {"Ich"} else f"von {next(iter(keys))}" if len(keys) == 1 and None not in keys else "von Mehreren"
+        p = Absatz(f"Reaktion {seite} {von}")
         for x in r:
             self.lauf(p, x.get("emoji", ""))
         self.absaetze.append(p)
 
     def zitat(self, a, m, byid):
         q = byid.get(m.get("reply"))
-        von_mir = q["from_me"] if q else False
-        a.text(ICH if von_mir else SIE, "Zitat Name Ich" if von_mir else "Zitat Name Sie")
+        wer = self.seite(q) if q else ("Sie" if not self.gruppe else self.personen[1]["key"])
+        von_mir = wer == "Ich"
+        a.text(self.person(wer)["name"] if self.gruppe or wer != "Ich" else ICH, f"Zitat Name {wer}")
         a.text("\u2028")
         text = bereinigen(m.get("quoted_data") or (q.get("data") if q and not q.get("media") else "") or "")
         if q and q.get("media") and not text:
             typ = q.get("message_type")
             if typ in (1, 2, 15):
-                a.objekt({"art": "icon", "icon": "kamera", "farbe": "Farbe Ich" if von_mir else "Farbe Sie"})
+                a.objekt({"art": "icon", "icon": "kamera", "farbe": farbe_von(wer)})
                 a.text(" Foto" if typ == 1 else " Video" if typ == 2 else " Sticker", "Zitat Text")
             elif typ == 3:
                 a.text("Sprachnachricht", "Zitat Text")
@@ -447,8 +562,16 @@ class Importer:
         return {"art": "bild", "pfad": pfad, "b": b, "h": h, "fit": "fillProportionally", "video": video, "y": 0,
                 "rahmen": self.rahmenfarbe}
 
+    def rahmen_fuer(self, key):
+        """Riso-Rahmen eines Fotos: Schattenton der Person, zweite Kontur im Schattenton einer anderen."""
+        andere = "Sie" if key == "Ich" else "Ich"
+        return (self.schatten(key), self.schatten(andere))
+
+    def schatten(self, key):
+        return "Ich · Schatten" if key == "Ich" else "Sie · Schatten" if key == "Sie" else schatten_von(key)
+
     def album(self, gruppe):
-        self.rahmenfarbe = f"Farbe {self.seite(gruppe[0])}"
+        self.rahmenfarbe = self.rahmen_fuer(self.seite(gruppe[0]))
         """Mehrere Fotos als Raster: jede Reihe ein eigener Absatz ("Album"-Format), die Reihen
         verschmelzen zu einer Blase. So bestimmt jede Reihe ihre eigene Höhe und nichts überlappt."""
         s = self.seite(gruppe[0])
@@ -467,6 +590,8 @@ class Importer:
                 a = Absatz(f"Album {s} {variante} Ende")
             else:
                 a = Absatz(f"Album {s} {variante}")
+            if r == 0:
+                self.namenszeile(a, s)
             for i, m in enumerate(reihe):
                 p = self.standbild(medium(self.medien, m.get("data")))
                 if len(reihe) == 1:
@@ -487,9 +612,10 @@ class Importer:
 
     def nachricht(self, m, byid):
         s = self.seite(m)
-        self.rahmenfarbe = f"Farbe {s}"
+        self.rahmenfarbe = self.rahmen_fuer(s)
         typ = m.get("message_type")
         a = Absatz(f"Chat {s}")
+        self.namenszeile(a, s)
         if m.get("reply"):
             self.zitat(a, m, byid)
         daten = m.get("data") or ""
@@ -508,7 +634,8 @@ class Importer:
                 if p:
                     a.objekt({"art": "bild", "pfad": p, "b": 70, "h": 70, "fit": "fitProportionally", "y": 0})
             elif typ in (1, 2):
-                if not a.laeufe:
+                # Bildblase, wenn nur der Name (Gruppe) davor steht, kein Zitat
+                if not m.get("reply"):
                     a.stil = f"Bild {s}"
                 p = self.standbild(p)
                 if p:
@@ -524,13 +651,13 @@ class Importer:
             elif typ == 3:
                 a.objekt({"art": "icon", "icon": "play", "farbe": "Textfarbe"})
                 a.text("\u2002")
-                a.objekt({"art": "icon", "icon": "welle", "farbe": f"Farbe {s}", "seed": m["key_id"]})
+                a.objekt({"art": "icon", "icon": "welle", "farbe": farbe_von(s), "seed": m["key_id"]})
                 dauer = audiodauer(p) if p else ""
                 if dauer:
                     a.text("\u2002" + dauer, "Zeit")
             else:
                 n = pdfseiten(p) if p and (m.get("mime") or "").endswith("pdf") else None
-                a.objekt({"art": "icon", "icon": "dokument", "farbe": f"Farbe {s}"})
+                a.objekt({"art": "icon", "icon": "dokument", "farbe": farbe_von(s)})
                 a.text(" PDF-Dokument" if (m.get("mime") or "").endswith("pdf") else " Dokument")
                 if n:
                     a.text(f" · {n} Seite{'n' if n != 1 else ''}", "Zitat Text")
@@ -595,10 +722,19 @@ class Importer:
                  # (unter dem Text, Fotos liegen darüber)
                  "shadingNoise": self.rauschen_blasen()}
         s = self.s
+        if self.gruppe:
+            # Gruppenchat (Variante B): alle anderen in derselben hellen Blase, Schatten in ihrer Farbe
+            blase = {**blase, "shadingColor": "Andere · Blase"}
         s("style.paragraph.create", name="Chat Sie", para=blase, chars=chars)
         s("style.paragraph.create", name="Chat Ich", basedOn="Chat Sie", para={"align": "right", "leftIndent": BLASE_EINZUG,
-          "rightIndent": 7, "shadingColor": "Ich · Blase", "shadingShadowColor": "Sie · Schatten", "shadingCorners": ecken("Ich")})
-        for seite in ("Sie", "Ich"):
+          "rightIndent": 7, "shadingColor": "Ich · Blase", "shadingCorners": ecken("Ich"),
+          "shadingShadowColor": "Ich · Schatten" if self.gruppe else "Sie · Schatten"})
+        keys = [p["key"] for p in self.personen]
+        for key in keys:
+            if key not in ("Ich", "Sie"):
+                s("style.paragraph.create", name=f"Chat {key}", basedOn="Chat Sie", para={"shadingShadowColor": schatten_von(key)})
+                s("style.character.create", name=f"Name {key}", chars={"fontStyle": "SemiBold", "fill": farbe_von(key)})
+        for seite in keys:
             s("style.paragraph.create", name=f"Bild {seite}", basedOn=f"Chat {seite}", para={"shadingOffsets": [3, 3, 3.5, 3]})
             # Album-Reihen: Abstand zwischen den Reihen klein, Flächen verschmelzen zu einer Blase.
             # Alle Reihen außer der letzten im selben Format (Abstand für gleiche Formate = 3 pt),
@@ -622,8 +758,12 @@ class Importer:
                  "shadingTint": 1, "shadingOffsets": [1.5, 3.5, 2, 3.5], "shadingCorners": R(7), "shadingShadowOn": False,
                  "borderOn": True, "borderTint": 1, "borderWeights": [0.8] * 4, "borderOffsets": [1.5, 3.5, 2, 3.5],
                  "borderWidth": "text", "borderCorners": R(7)}
+        if self.gruppe:
+            vons = [("von Mir", "Farbe Ich"), ("von Mehreren", "Textfarbe")] + [(f"von {k}", farbe_von(k)) for k in keys if k != "Ich"]
+        else:
+            vons = [("von Ihr", "Farbe Sie"), ("von Mir", "Farbe Ich"), ("von Beiden", "Textfarbe")]
         for seite, einzug in (("Sie", {"leftIndent": 11}), ("Ich", {"rightIndent": 11})):
-            for von, kontur in (("von Ihr", "Farbe Sie"), ("von Mir", "Farbe Ich"), ("von Beiden", "Textfarbe")):
+            for von, kontur in vons:
                 s("style.paragraph.create", name=f"Reaktion {seite} {von}", basedOn=f"Chat {seite}",
                   para={**pille, **einzug, "borderColor": kontur})
         s("style.paragraph.create", name="Datum", para={"align": "center", "spaceBefore": datum_vor, "spaceAfter": 0, "keepWithNext": 1,
@@ -642,8 +782,8 @@ class Importer:
           chars={"fontFamily": self.schrift, "fontStyle": "Bold", "size": 18, "fill": "Farbe Ich"})
         z = self.groesse("zitat")
         s("style.character.create", name="Zeit", chars={"size": self.groesse("zeit"), "fontStyle": "Medium"})
-        s("style.character.create", name="Zitat Name Ich", chars={"size": round(z * ZITAT_NAME, 2), "fontStyle": "Bold", "fill": "Farbe Ich"})
-        s("style.character.create", name="Zitat Name Sie", chars={"size": round(z * ZITAT_NAME, 2), "fontStyle": "Bold", "fill": "Farbe Sie"})
+        for key in keys:
+            s("style.character.create", name=f"Zitat Name {key}", chars={"size": round(z * ZITAT_NAME, 2), "fontStyle": "Bold", "fill": farbe_von(key)})
         s("style.character.create", name="Zitat Text", chars={"size": z, "fontStyle": "Light"})
         s("style.character.create", name="Hinweis", chars={"size": round(z * HINWEIS, 2), "fontStyle": "Light", "fill": "Textfarbe"})
         s("style.character.create", name="Link", chars={"underline": True, "fill": "Textfarbe"})
@@ -935,8 +1075,7 @@ class Importer:
             teile = [ref]
             if obj.get("rahmen"):
                 # Dezent: die Schattentöne der Blasen (55 %) statt der vollen Farben
-                farbe = obj["rahmen"].replace("Farbe ", "") + " · Schatten"
-                andere = "Sie · Schatten" if farbe == "Ich · Schatten" else "Ich · Schatten"
+                farbe, andere = obj["rahmen"]
                 self.s("object.stroke", swatch=farbe, weight=1.6, align="inside", ids=[ref])
                 v = 1.3
                 k = self.s("frame.create", rect=[X + v, Y + v, X + obj["b"] + v, Y + obj["h"] + v], content="unassigned")
@@ -994,17 +1133,26 @@ class Importer:
         for name, basis, ton in VARIANTEN:
             s("swatch.create", name=name, base=basis, tint=self.stil.get("tonwerte", {}).get(name, ton))
             varianten.append(name)
-        if self.dok is None or "Farbe Ich" not in self.dok["swatches"]:
+        if self.gruppe:
+            # Weitere Personen: Hauptfarbe und Schattenton; alle Blasen der anderen in einem hellen Ton
+            for p in self.personen:
+                if p["key"] not in ("Ich", "Sie"):
+                    s("swatch.create", name=farbe_von(p["key"]), color=p["farbe"])
+                    s("swatch.create", name=schatten_von(p["key"]), base=farbe_von(p["key"]), tint=0.55)
+                    varianten += [farbe_von(p["key"]), schatten_von(p["key"])]
+            s("swatch.create", name="Andere · Blase", base="Textfarbe", tint=0.12)
+            varianten.append("Andere · Blase")
+        if self.dok is None or self.n_farbe("Farbe Ich") not in self.dok["swatches"]:
             s("swatch.newColorGroup", name="Jahresbuch", swatches=[n for n, _ in self.farben()] + varianten)
         self.formate()
         if self.dok is None:
             self.parent_index = 0
             self.mustervorlage()
-        elif not any(pa.get("label") == "J-Chat" for pa in self.dok.get("parents", [])):
+        elif not any(pa.get("label") == self.vorlage for pa in self.dok.get("parents", [])):
             # Auf der ersten Mustervorlage des Buchs aufbauen: deren Seitenzahl & Co. zeigen sich mit.
             eltern = self.dok.get("parents", [])
-            s("layout.parents.new", prefix="J", name="Chat", basedOn=eltern[0]["label"] if eltern else None)
-            s("layout.marginsAndColumns", parent="J-Chat", margins=RAND, columns=2, gutter=STEG)
+            s("layout.parents.new", prefix=self.vorlage.split("-")[0], name="Chat", basedOn=eltern[0]["label"] if eltern else None)
+            s("layout.marginsAndColumns", parent=self.vorlage, margins=RAND, columns=2, gutter=STEG)
             self.parent_index = len(self.dok.get("parents", []))
             self.mustervorlage()
 
@@ -1068,9 +1216,55 @@ class Importer:
         return len(self.steps)
 
 
+def chats_auflisten(export):
+    """Die Chats im Export, für die Auswahl im Jahresbuch-Fenster: [{chat, name, nachrichten, von,
+    bis, gruppe, personen: [{name, nachrichten}]}], die mit den meisten Nachrichten zuerst."""
+    daten = json.load(open(export, encoding="utf-8"))
+    out = []
+    for jid, chat in daten.items():
+        msgs = [m for m in chat.get("messages", {}).values() if m.get("message_type") not in AUSBLENDEN]
+        if not msgs:
+            continue
+        zeiten = sorted(m["timestamp"] for m in msgs)
+        sender = {}
+        for m in msgs:
+            if not m.get("from_me") and m.get("sender"):
+                sender[m["sender"]] = sender.get(m["sender"], 0) + 1
+        out.append({"chat": jid, "name": chat.get("name") or jid.split("@")[0], "nachrichten": len(msgs),
+                    "von": datetime.fromtimestamp(zeiten[0], TZ).date().isoformat(),
+                    "bis": datetime.fromtimestamp(zeiten[-1], TZ).date().isoformat(),
+                    "gruppe": len(sender) > 1,
+                    "personen": [{"name": k, "nachrichten": v} for k, v in sorted(sender.items(), key=lambda kv: -kv[1])]})
+    out.sort(key=lambda c: -c["nachrichten"])
+    return out
+
+
+def zaehlen(export, chat, von, bis):
+    """Nachrichten und Fotos/Videos eines Chats im Zeitraum (für die Anzeige im Jahresbuch-Fenster)."""
+    daten = json.load(open(export, encoding="utf-8"))
+    c = daten.get(chat) if chat and chat in daten else next(iter(daten.values()))
+    v = date.fromisoformat(von) if von else None
+    b = date.fromisoformat(bis) if bis else None
+    msgs = [m for m in c.get("messages", {}).values() if m.get("message_type") not in AUSBLENDEN
+            and (not v or zeit(m).date() >= v) and (not b or zeit(m).date() <= b)]
+    return {"nachrichten": len(msgs), "fotos": sum(1 for m in msgs if m.get("message_type") in (1, 2) and m.get("media"))}
+
+
 def main():
+    if "--liste" in sys.argv:
+        # Nur die Chats im Export auflisten: designcraft_import.py --liste EXPORT
+        print(json.dumps(chats_auflisten(sys.argv[sys.argv.index("--liste") + 1]), ensure_ascii=False))
+        return
+    if "--zaehlen" in sys.argv:
+        # Nur zählen: designcraft_import.py --zaehlen EXPORT [CHAT] [VON] [BIS]
+        rest = sys.argv[sys.argv.index("--zaehlen") + 1:] + [None] * 3
+        print(json.dumps(zaehlen(rest[0], rest[1] or None, rest[2] or None, rest[3] or None)))
+        return
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("export"); ap.add_argument("medien"); ap.add_argument("ausgabe")
+    ap.add_argument("--chat", help="Kennung des Chats im Export (siehe --liste); ohne: der erste")
+    ap.add_argument("--personen", help="Personen als JSON (Liste oder Datei): [{key, name, ids, farbe}]")
+    ap.add_argument("--nummer", type=int, default=1, help="Nummer des Chats im Buch (ab 2: eigene Formate und Farbfelder)")
     ap.add_argument("--stil", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "stil.json"))
     ap.add_argument("--schrift", help='Schrift für den Chat, z. B. "Space Grotesk" (Standard) oder "Work Sans"')
     ap.add_argument("--von"); ap.add_argument("--bis"); ap.add_argument("--emoji-font"); ap.add_argument("--arbeitsordner")
