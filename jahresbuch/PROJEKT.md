@@ -14,6 +14,11 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 - **Ein Thema nach dem anderen.** Bei Unklarheiten **erst fragen, dann erzeugen** (hat sich mehrfach
   über falsch verstandene Wünsche geärgert). Bei Gestaltungsfragen gern Varianten nebeneinander zeigen.
 - **Keine Arbeit in andere Sessions auslagern** (außer der User will es ausdrücklich).
+- **Aufwand passend zur Aufgabe** (User am 22.11.2026, sehr verärgert über eine stundenlange
+  Prüfrunde für eine kleine Erweiterung): bei kleinen Änderungen nur die zugehörigen Tests, keine
+  großen Prüfrunden mit vielen Helfern und keine kompletten Testläufe aller Bereiche, außer der User
+  will es. Lieber gleich richtig bauen als mehrmals umbauen. Kurz berichten. Der User hat ein
+  Nutzungslimit (alle 5 Stunden): fertige Zwischenstände früh committen und pushen.
 - Rechner: **MacBook Pro mit Intel-Prozessor** (x86_64). Ein Neubau von DesignCraft dauert dort
   ~7–20 Min., ein `git pull` Sekunden. Immer dazusagen, ob nur `git pull` oder auch Neubau nötig ist.
   **Schnellerer Neubau** (mit dem User am 21.11.2026 vereinbart, ab dem nächsten Update):
@@ -35,7 +40,18 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 | Mac `~/Jahresbuch/` | Arbeitsordner, Einstellungen `stil.json` des Jahresbuch-Fensters, Test-Dateien |
 | Schriften | Space Grotesk, Fraunces, Work Sans in `~/Library/Fonts` (Google Fonts) |
 
-Git: Remote `origin` = Fork, `upstream` = `storytold/designcraft`. Commits mit dem neutralen Namen „Jahresbuch“ (kein echter Name: das Repository ist öffentlich).
+Git: Remote `origin` = Fork, `upstream` = `storytold/designcraft`. Commits mit dem neutralen Namen
+„Jahresbuch“ und `jahresbuch@example.invalid` (`git -c user.name=… -c user.email=…`).
+**Keine echten Namen und keine E-Mail-Adresse ins Repository** – weder in Dateien noch in Commits
+(User am 22.11.2026: „auf keinen Fall“; das Repository ist öffentlich). Im Text nur „der User“ und
+„seine Partnerin“, im Code „Ich“/„Sie“.
+Am 22.11.2026 wurde dafür die ganze Git-Geschichte umgeschrieben (beide Zweige). Auf dem Mac ist
+einmal `git fetch origin` und `git reset --hard origin/absatz-schatten` nötig statt `git pull` –
+falls der User von einem Fehler bei `git pull` berichtet, daran denken.
+
+In der Cloud: mit `CARGO_INCREMENTAL=0` bauen (sonst füllt `target/debug/incremental` die Platte,
+einmal 35 GB). Zwei Oberflächen-Tests (`a_later_field_taking_the_keyboard…`,
+`the_class_filter_and_similar_fonts…`) scheitern dort an fehlenden Schriften, nicht an unserem Code.
 
 ## Daten (WhatsApp-Export)
 
@@ -233,8 +249,9 @@ Ursprünglicher Plan:
 3. Noch unbeantwortet: Startet er jedes Jahr mit **neuem leeren Buch** oder einer **Vorlage vom Vorjahr**?
 4. Danach: **Foto-Seiten** (alte Vorlagen: 2 Querformate übereinander · 1 quer oben + 2 hoch unten ·
    1 hoch seitenfüllend · 2×2 hoch · 1 randlos; Seitenzahl blau/bei randlos weiß), dann freie Texte.
-5. Neue offizielle DesignCraft-Versionen übernehmen: **nur auf Wunsch** des Users (`upstream` mergen).
-6. Später evtl.: Erweiterungen dem DesignCraft-Projekt vorschlagen (entscheidet der User).
+5. **Etappe 3 des Fensters:** Personen umbenennen und zusammenlegen (für Gruppenchats).
+6. Neue offizielle DesignCraft-Versionen übernehmen: **nur auf Wunsch** des Users (`upstream` mergen).
+7. Später evtl.: Erweiterungen dem DesignCraft-Projekt vorschlagen (entscheidet der User).
 8. Bekannte Kleinigkeit: Ein in einer Spalte zu hohes Einzelbild rutscht samt Datum in die nächste
    Spalte und lässt Leerraum.
 
