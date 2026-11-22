@@ -58,7 +58,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
         "jahresbuch.chatImport",
         "WhatsApp-Chat einfügen …",
         None,
-        "{export?, medien?, chat?, name?, von?, bis?, wie?} — Jahresbuch: without params, shows the Jahresbuch panel's New Chat view; with export, inserts that WhatsApp chat into the selected empty text frame (or new chat pages), riso style, and returns its number (wie: number of the chat whose look it takes)",
+        "{export?, medien?, chat?, name?, von?, bis?, wie?, python?} — Jahresbuch: without params, shows the Jahresbuch panel's New Chat view; with export, inserts that WhatsApp chat into the selected empty text frame (or new chat pages), riso style, as one undo step, and returns the chat ({nummer, name, personen, stil, …}; wie: number of the chat whose look it takes; python: the interpreter that runs the helper, default the panel's setting)",
     ),
     (
         "jahresbuch.chatDesign",

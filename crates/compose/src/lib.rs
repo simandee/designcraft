@@ -282,6 +282,26 @@ pub struct Deco {
     pub speckle: bool,
     /// Paper grain instead of a colour fill, inside `path` (shading noise).
     pub grain: Option<Grain>,
+    /// Shading specks as dots (centre x, centre y, radius; frame inner space) instead of `path`:
+    /// a box holds tens of thousands, and a dot takes a thirtieth of the memory of its circle.
+    /// [`Deco::speck_path`] makes the circles when they are drawn.
+    pub dots: Option<std::sync::Arc<[[f32; 3]]>>,
+}
+
+impl Deco {
+    /// The dots as one path of small circles, only those reaching into `within` when given (the
+    /// visible part); None for a deco without dots.
+    pub fn speck_path(&self, within: Option<Rect>) -> Option<designcraft_geom::BezPath> {
+        let dots = self.dots.as_ref()?;
+        let mut p = designcraft_geom::BezPath::new();
+        for &[x, y, r] in dots.iter() {
+            let (c, r) = (designcraft_geom::kurbo::Point::new(f64::from(x), f64::from(y)), f64::from(r));
+            if within.is_none_or(|w| c.x + r >= w.x0 && c.x - r <= w.x1 && c.y + r >= w.y0 && c.y - r <= w.y1) {
+                p.extend(designcraft_geom::Shape::path_elements(&designcraft_geom::kurbo::Circle::new(c, r), 0.05));
+            }
+        }
+        Some(p)
+    }
 }
 
 /// Paper grain: a fine noise texture, as a printed paper has. Dark grain is black multiplied over

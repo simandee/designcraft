@@ -21,8 +21,16 @@ pub fn specs() -> Vec<CommandSpec> {
             "{key, value?: string (null or missing: remove it)} — free text saved with the document under `key`, for scripts and extensions",
             has_doc,
             |s, p| {
-                let key = super::str_param(p, "key").filter(|k| !k.is_empty()).ok_or_else(|| super::bad("document.setLabel", "`key` required"))?.to_string();
-                let value = p.get("value").and_then(Value::as_str).map(str::to_string);
+                let key = super::str_param(p, "key")
+                    .filter(|k| !k.is_empty())
+                    .ok_or_else(|| super::bad("document.setLabel", "`key` required"))?
+                    .to_string();
+                let value = match p.get("value") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(v)) => Some(v.clone()),
+                    // Anything else must not quietly remove the label.
+                    Some(_) => return Err(super::bad("document.setLabel", "`value` must be text (or null to remove the label)")),
+                };
                 s.edit(|d, _| {
                     match &value {
                         Some(v) => d.labels.insert(key.clone(), v.clone()),
@@ -169,5 +177,8 @@ mod label_tests {
         s.execute("document.setLabel", &json!({"key": "a"})).unwrap();
         assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), Value::Null, "removed");
         assert!(s.execute("document.setLabel", &json!({"value": "1"})).is_err(), "a key is needed");
+        s.execute("document.setLabel", &json!({"key": "a", "value": "kept"})).unwrap();
+        assert!(s.execute("document.setLabel", &json!({"key": "a", "value": [1]})).is_err(), "not text");
+        assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), json!("kept"), "a refused value leaves the label");
     }
 }

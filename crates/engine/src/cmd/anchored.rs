@@ -312,11 +312,17 @@ fn resize(s: &mut Session, p: &Value) -> Result<Value> {
 fn delete(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "anchored.delete";
     let (sid, k) = object_ref(s, p, CMD)?;
-    let pos = s.doc()?.doc.story(sid).and_then(|st| st.text.match_indices(OBJECT_MARK).nth(k).map(|(i, _)| i)).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+    let pos = s
+        .doc()?
+        .doc
+        .story(sid)
+        .and_then(|st| st.text.match_indices(OBJECT_MARK).nth(k).map(|(i, _)| i))
+        .ok_or_else(|| bad(CMD, "no such anchored object"))?;
     s.edit(|d, sel| {
-        let st = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
-        st.delete(pos..pos + OBJECT_MARK.len_utf8());
-        st.rev = st.rev.wrapping_add(1);
+        let len = OBJECT_MARK.len_utf8();
+        d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?.delete(pos..pos + len);
+        // Hyperlinks and data-merge fields after the object keep covering their text.
+        d.adjust_text_ranges(sid, pos..pos + len, 0);
         *sel = designcraft_doc::Selection::default();
         Ok(json!({"story": sid.0, "pos": pos}))
     })
@@ -406,6 +412,30 @@ mod tests {
         assert!(st.text.starts_with("Before after"), "{:?}", st.text);
         s.execute("edit.undo", &json!({})).unwrap();
         assert_eq!(s.doc().unwrap().doc.story(sid).unwrap().objects.len(), 1, "undo brings it back");
+    }
+
+    /// Edit › Clear deletes a selected object in text, as the Delete key does, and a link after it
+    /// stays on its words.
+    #[test]
+    fn clearing_an_object_in_text_keeps_a_later_link_on_its_words() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect": [72, 72, 400, 400], "content": "text", "text": "Photo: see the link here."})).unwrap();
+        let sid = s.doc().unwrap().doc.item(ItemId(r["id"].as_u64().unwrap())).unwrap().text_frame().unwrap().story;
+        let f = s.execute("frame.create", &json!({"rect": [450, 450, 470, 470], "content": "unassigned"})).unwrap()["id"].clone();
+        s.execute("anchored.insert", &json!({"ids": [f], "story": sid.0, "pos": 7})).unwrap();
+        let at = s.doc().unwrap().doc.story(sid).unwrap().text.find("link").unwrap();
+        s.execute("text.select", &json!({"story": sid.0, "anchor": at, "focus": at + 4})).unwrap();
+        s.execute("hyperlink.create", &json!({"url": "https://example.org"})).unwrap();
+        s.execute("selection.set", &json!({"inline": {"story": sid.0, "index": 0}})).unwrap();
+        s.execute("edit.clear", &json!({})).unwrap();
+        let d = &s.doc().unwrap().doc;
+        let st = d.story(sid).unwrap();
+        assert!(st.objects.is_empty(), "the object is gone");
+        let Some(designcraft_doc::HyperlinkSource::Text { start, end, .. }) = d.hyperlinks.first().map(|h| h.source.clone()) else {
+            panic!("the link is there")
+        };
+        assert_eq!(&st.text[start..end], "link", "the link still covers its word");
     }
 
     /// A chat photo in the text (picture frame grouped with an outline of its size, offset): it
@@ -848,10 +878,16 @@ fn frame(s: &mut Session, p: &Value) -> Result<Value> {
     let (sid, k) = object_ref(s, p, CMD)?;
     let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
     let old = cur.picture_rect().ok_or_else(|| bad(CMD, "the object has no picture frame"))?;
+    // A turned or sheared frame would grow with every crop (its sides are not the box's).
+    if !cur.picture_frame().is_some_and(|(_, xf)| designcraft_doc::AnchoredObject::axis_aligned(xf)) {
+        return Err(bad(CMD, "a turned or sheared picture frame can't be cropped here yet; scale it instead"));
+    }
     let side = |key: &str| p.get(key).and_then(Value::as_f64);
     let n = match rect_param(p, "rect") {
         Some(r) => r,
-        None => designcraft_geom::Rect::from_origin_size(old.origin(), (side("width").unwrap_or(old.width()), side("height").unwrap_or(old.height()))),
+        None => {
+            designcraft_geom::Rect::from_origin_size(old.origin(), (side("width").unwrap_or(old.width()), side("height").unwrap_or(old.height())))
+        }
     };
     if !(MIN_SIDE..=MAX_SIDE).contains(&n.width()) || !(MIN_SIDE..=MAX_SIDE).contains(&n.height()) {
         return Err(bad(CMD, format!("sides: {MIN_SIDE} to {MAX_SIDE} pt")));
@@ -878,7 +914,11 @@ fn content(s: &mut Session, p: &Value) -> Result<Value> {
     {
         return Err(bad(CMD, "scale: 0.001 to 1000"));
     }
-    let about = p.get("about").and_then(Value::as_array).and_then(|a| Some(designcraft_geom::Point::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?))).unwrap_or_else(|| rect.center());
+    let about = p
+        .get("about")
+        .and_then(Value::as_array)
+        .and_then(|a| Some(designcraft_geom::Point::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
+        .unwrap_or_else(|| rect.center());
     let mut m = Affine::translate((dx, dy));
     if let Some((x, y)) = scale {
         m = m * Affine::translate(about.to_vec2()) * Affine::scale_non_uniform(x / sx0, y / sy0) * Affine::translate(-about.to_vec2());
@@ -900,7 +940,9 @@ fn fit(s: &mut Session, p: &Value) -> Result<Value> {
         let (r, _) = cur.picture_content().ok_or_else(|| bad(CMD, "the object has no picture"))?;
         return change_object(s, CMD, sid, k, |o| set_picture_rect(o, r).ok_or_else(|| bad(CMD, "the object has no picture frame")));
     }
-    let m = super::object::fitting_mode(mode).filter(|m| *m != designcraft_doc::Fitting::None).ok_or_else(|| bad(CMD, format!("unknown mode `{mode}`")))?;
+    let m = super::object::fitting_mode(mode)
+        .filter(|m| *m != designcraft_doc::Fitting::None)
+        .ok_or_else(|| bad(CMD, format!("unknown mode `{mode}`")))?;
     change_object(s, CMD, sid, k, |o| {
         let pic = o.picture_mut().ok_or_else(|| bad(CMD, "the object has no picture"))?;
         let r = pic.inner_bounds();

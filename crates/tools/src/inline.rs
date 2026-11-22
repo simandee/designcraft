@@ -1,10 +1,17 @@
 //! Objects anchored in text (a picture in a chat line, an icon in a sentence) with the Selection
-//! tool, as other objects: a click on one selects it, its bounds show eight handles, and dragging
-//! a handle resizes it with its content, keeping its proportions (`anchored.resize`); the text
-//! moves around the new size. Escape or a click elsewhere ends it.
+//! tool, like picture frames: a click selects one and shows its frame's eight handles, which crop
+//! it (`anchored.frame`; with Cmd they scale it with its content, `anchored.resize`); the content
+//! grabber or a double click selects the picture inside, which then moves and scales within the
+//! frame (`anchored.content`). The text moves around the new size. Escape steps back out.
+//!
+//! The lookups stay local: an object's place comes from its own story's layout, and a hit test
+//! looks only at the spread under the pointer, so they don't grow with the length of the book.
 
-use designcraft_doc::{Item, SpreadRef, StoryId};
-use designcraft_geom::{Affine, Point, Rect};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use designcraft_doc::{Item, ItemLoc, SpreadRef, StoryId};
+use designcraft_geom::{Affine, Point, Rect, Size};
 
 use crate::ToolContext;
 
@@ -19,56 +26,79 @@ pub struct Inline {
 const HIT_PX: f64 = 2.0;
 const HANDLE_PX: f64 = 5.0;
 
-/// Every anchored object shown in the visible text frames: (object, its bounds on the canvas).
-/// Frontmost last.
-fn shown(cx: &ToolContext) -> Vec<(Inline, Rect)> {
-    placed(cx).into_iter().map(|(o, m, size)| (o, m.transform_rect_bbox(Rect::from_origin_size(Point::ZERO, size)))).collect()
+/// Can items in `it` be edited: shown, unlocked and on a shown, unlocked layer?
+fn open(cx: &ToolContext, it: &Item) -> bool {
+    !(it.hidden || it.locked || cx.doc.layer(it.layer).is_some_and(|l| l.locked || !l.visible))
 }
 
-/// Every anchored object shown: (object, the transform from its space to the canvas, its size).
-fn placed(cx: &ToolContext) -> Vec<(Inline, Affine, designcraft_geom::Size)> {
+/// The objects shown in the visible, unlocked text frames of spread `slot`: (object, the
+/// transform from its space to the canvas, its size). Frontmost last.
+fn placed_in(cx: &ToolContext, slot: &crate::layout::SpreadSlot) -> Vec<(Inline, Affine, Size)> {
     let mut out = Vec::new();
-    for slot in &cx.layout.slots {
-        let SpreadRef::Doc(_) = slot.spread else { continue };
-        let Some(sp) = cx.doc.spread(slot.spread) else { continue };
-        let mut frames: Vec<&Item> = Vec::new();
-        let mut todo: Vec<&Item> = sp.items.iter().map(AsRef::as_ref).collect();
-        todo.reverse();
-        while let Some(it) = todo.pop() {
-            let locked = it.locked || cx.doc.layer(it.layer).is_some_and(|l| l.locked || !l.visible);
-            if it.hidden || locked {
-                continue;
-            }
-            if it.is_text_frame() {
-                frames.push(it);
-            }
-            let mut kids: Vec<&Item> = it.children().iter().map(AsRef::as_ref).collect();
-            kids.reverse();
-            todo.extend(kids);
+    let SpreadRef::Doc(_) = slot.spread else { return out };
+    let Some(sp) = cx.doc.spread(slot.spread) else { return out };
+    // Depth first in paint order, with each item's parent transform carried down.
+    let mut todo: Vec<(&Item, Affine)> = sp.items.iter().rev().map(|it| (it.as_ref(), Affine::IDENTITY)).collect();
+    let mut stories: HashMap<StoryId, Arc<designcraft_compose::ComposedStory>> = HashMap::new();
+    while let Some((it, parent)) = todo.pop() {
+        if !open(cx, it) {
+            continue;
         }
-        for it in frames {
-            let Some(story) = it.text_frame().map(|t| t.story) else { continue };
-            let Some(loc) = cx.doc.find(it.id) else { continue };
-            let cs = cx.cache.get(cx.doc, story, None);
-            let Some(ft) = cs.frame(it.id) else { continue };
-            let m = slot.xf * cx.doc.parent_xf(&loc) * cx.doc.text_xf(it);
-            for o in &ft.objects {
-                out.push((Inline { story, index: o.index }, m * Affine::translate(o.origin.to_vec2()), o.size.into()));
+        if let Some(story) = it.text_frame().map(|t| t.story) {
+            let cs = stories.entry(story).or_insert_with(|| cx.cache.get(cx.doc, story, None));
+            if let Some(ft) = cs.frame(it.id) {
+                let m = slot.xf * parent * cx.doc.text_xf(it);
+                out.extend(ft.objects.iter().map(|o| (Inline { story, index: o.index }, m * Affine::translate(o.origin.to_vec2()), o.size.into())));
             }
         }
+        let inner = parent * it.xf;
+        todo.extend(it.children().iter().rev().map(|c| (c.as_ref(), inner)));
     }
     out
+}
+
+/// Whether the item at `loc` and the groups around it are shown and unlocked.
+fn open_at(cx: &ToolContext, loc: &ItemLoc) -> bool {
+    let Some(sp) = cx.doc.spread(loc.spread) else { return false };
+    let mut items: &[Arc<Item>] = &sp.items;
+    for &i in &loc.path {
+        let Some(it) = items.get(i) else { return false };
+        if !open(cx, it) {
+            return false;
+        }
+        items = it.children();
+    }
+    true
+}
+
+/// Where object `o` shows: the transform from its space to the canvas and its size, in the frame
+/// that shows it (None when that frame is hidden, locked or not on a page).
+fn place(cx: &ToolContext, o: Inline) -> Option<(Affine, Size)> {
+    let cs = cx.cache.get(cx.doc, o.story, None);
+    let (ft, obj) = cs.frames.iter().find_map(|ft| ft.objects.iter().find(|x| x.index == o.index).map(|x| (ft, x)))?;
+    let loc = cx.doc.find(ft.frame)?;
+    if !matches!(loc.spread, SpreadRef::Doc(_)) || !open_at(cx, &loc) {
+        return None;
+    }
+    let slot = cx.layout.slot(loc.spread)?;
+    let m = slot.xf * cx.doc.parent_xf(&loc) * cx.doc.text_xf(cx.doc.item_at(&loc)?);
+    Some((m * Affine::translate(obj.origin.to_vec2()), obj.size.into()))
 }
 
 /// The frontmost anchored object under canvas point `p`.
 pub fn at(cx: &ToolContext, p: Point) -> Option<(Inline, Rect)> {
     let tol = cx.tol(HIT_PX);
-    shown(cx).into_iter().rev().find(|(_, r)| r.inflate(tol, tol).contains(p))
+    let slot = cx.layout.slot(cx.layout.spread_at(p)?.0)?;
+    placed_in(cx, slot)
+        .into_iter()
+        .rev()
+        .map(|(o, m, size)| (o, m.transform_rect_bbox(Rect::from_origin_size(Point::ZERO, size))))
+        .find(|(_, r)| r.inflate(tol, tol).contains(p))
 }
 
-/// Where object `o` shows on the canvas (its first frame).
+/// Where object `o` shows on the canvas.
 pub fn bounds(cx: &ToolContext, o: Inline) -> Option<Rect> {
-    shown(cx).into_iter().find(|(i, _)| *i == o).map(|(_, r)| r)
+    place(cx, o).map(|(m, size)| m.transform_rect_bbox(Rect::from_origin_size(Point::ZERO, size)))
 }
 
 /// The handle of `r` (as [`crate::select::handles`] numbers them) under `p`.
@@ -97,7 +127,13 @@ pub fn width_for(start: Rect, h: usize, p: Point, width: f64) -> Option<f64> {
         _ => None,
     };
     let f = match (fx, fy) {
-        (Some(a), Some(b)) => if (a - 1.0).abs() >= (b - 1.0).abs() { a } else { b },
+        (Some(a), Some(b)) => {
+            if (a - 1.0).abs() >= (b - 1.0).abs() {
+                a
+            } else {
+                b
+            }
+        }
         (Some(a), None) | (None, Some(a)) => a,
         (None, None) => return None,
     };
@@ -109,13 +145,20 @@ pub fn item<'a>(cx: &'a ToolContext, o: Inline) -> Option<&'a Item> {
     cx.doc.story(o.story)?.objects.get(o.index).map(|a| &a.item)
 }
 
-/// The transform from object `o`'s space to the canvas (where its first frame shows it).
+/// The transform from object `o`'s space to the canvas.
 pub fn placement(cx: &ToolContext, o: Inline) -> Option<Affine> {
-    placed(cx).into_iter().find(|(i, _, _)| *i == o).map(|(_, m, _)| m)
+    place(cx, o).map(|(m, _)| m)
 }
 
 fn object<'a>(cx: &'a ToolContext, o: Inline) -> Option<&'a designcraft_doc::AnchoredObject> {
     cx.doc.story(o.story)?.objects.get(o.index).map(AsRef::as_ref)
+}
+
+/// Can object `o`'s picture frame be cropped with its handles: it has a picture, and its frame is
+/// upright on the canvas (quarter turns at most, no shear), so a dragged side moves only itself.
+pub fn croppable(cx: &ToolContext, o: Inline) -> bool {
+    let (Some(m), Some(obj)) = (placement(cx, o), object(cx, o)) else { return false };
+    obj.picture_content().is_some() && obj.picture_frame().is_some_and(|(_, xf)| designcraft_doc::AnchoredObject::axis_aligned(m * xf))
 }
 
 /// Where object `o`'s picture frame shows on the canvas (the object's bounds when it has none).

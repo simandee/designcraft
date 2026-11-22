@@ -31,6 +31,14 @@ pub const SPRENKEL_RAHMEN: (&str, f64) = ("sprenkel.rahmen", 1.0);
 /// Farben: (Pfad, Farbfeld, Standard).
 pub const TEXTFARBE: (&str, &str, &str) = ("farbe_text", "Textfarbe", "#1E2A5A");
 pub const PAPIER: (&str, &str, &str) = ("farbe_papier", "Papier", "#F6F0E3");
+/// In Gruppenchats färbt „Farbe Sie“ keine Person, sondern Datum, Verzierungen und den Schatten
+/// der Spalten-Box: dort ist sie eine eigene Farbe.
+pub const AKZENT: (&str, &str, &str) = ("farbe_sie", "Farbe Sie", "#3554E0");
+
+/// Die Farben eines Chats außer denen der Personen.
+pub fn chat_farben(chat: &Chat) -> &'static [(&'static str, &'static str, &'static str)] {
+    if chat.gruppe() { &[TEXTFARBE, PAPIER, AKZENT] } else { &[TEXTFARBE, PAPIER] }
+}
 pub const SCHRIFTEN: [&str; 2] = ["Space Grotesk", "Work Sans"];
 
 /// Absatzabstände (pt): (vor der Blase, nach der Blase, gleiche Person, vor dem Datum). Vor der
@@ -52,16 +60,26 @@ fn blasen_ecken(ich: bool) -> Value {
     if ich { json!([rund, rund, spitz, rund]) } else { json!([rund, rund, rund, spitz]) }
 }
 
-/// Die Befehle, die die Gestaltung von `chat` aufs Dokument bringen. `doc`: das Dokument, wie es
-/// jetzt ist; `basis`: wie es vor einer laufenden Vorschau war (Objekte im Text werden davon aus
-/// skaliert, weil eine Vorschau ihr Skript immer auf diesem Stand abspielt).
-pub fn befehle(doc: &Document, basis: &Document, chat: &Chat) -> Vec<Value> {
+/// Die Befehle, die die Gestaltung von `chat` aufs Dokument `doc` bringen (bei einer laufenden
+/// Vorschau: das Dokument davor, auf dem sie ihr Skript abspielt; Objekte im Text werden von dort
+/// aus skaliert).
+pub fn befehle(doc: &Document, chat: &Chat) -> Vec<Value> {
     let mut b = Befehle { doc, chat, out: Vec::new() };
     b.farben_und_schrift();
     b.abstaende();
-    b.schriftgroessen(basis);
+    b.schriftgroessen();
     b.rauschen_der_spalten_box();
     b.out
+}
+
+/// Nur die Befehle, in denen sich `neu` von `alt` (dem Chat, wie er im Etikett von `doc` steht)
+/// unterscheidet: eine Änderung im Fenster lässt so eigene Anpassungen an den übrigen Formaten
+/// und Farbfeldern stehen. Ohne `alt` alle.
+pub fn geaenderte_befehle(doc: &Document, alt: Option<&Chat>, neu: &Chat) -> Vec<Value> {
+    let neue = befehle(doc, neu);
+    let Some(alt) = alt else { return neue };
+    let alte = befehle(doc, alt);
+    neue.into_iter().filter(|b| !alte.contains(b)).collect()
 }
 
 /// Die Befehle, während sie entstehen, mit dem Dokument, in dem sie laufen.
@@ -108,15 +126,13 @@ impl Befehle<'_> {
                 self.b("swatch.options", json!({"name": n, "color": p.farbe}));
             }
         }
-        for (pfad, name, standard) in [TEXTFARBE, PAPIER] {
+        for &(pfad, name, standard) in chat_farben(chat) {
             if let Some(n) = self.farbfeld(name) {
                 self.b("swatch.options", json!({"name": n, "color": chat.text(pfad, standard)}));
             }
         }
         let schrift = chat.text("schrift_chat", SCHRIFTEN[0]);
-        for name in ["Chat Sie", "Seitenzahl"] {
-            self.absatz(name, json!({"chars": {"fontFamily": schrift}}));
-        }
+        self.absatz("Chat Sie", json!({"chars": {"fontFamily": schrift}}));
         for (stil, (pfad, standard)) in [("Chat Sie", KORN_BLASEN), ("Datum", KORN_DATUM), ("Spalte Schatten", SPRENKEL_RAHMEN)] {
             self.absatz(stil, json!({"para": {"shadingSpeckle": chat.zahl(pfad, standard).clamp(0.0, 1.0)}}));
         }
@@ -166,7 +182,7 @@ impl Befehle<'_> {
     }
 
     /// Schriftgrößen; Emojis wachsen mit dem Nachrichtentext, die Verzierungen mit dem Datum.
-    fn schriftgroessen(&mut self, basis: &Document) {
+    fn schriftgroessen(&mut self) {
         let chat = self.chat;
         let g = |(p, s): (&str, f64)| chat.zahl(p, s).clamp(4.0, 24.0);
         let (text, zeit, datum, zitat) = (g(SCHRIFT_TEXT), g(SCHRIFT_ZEIT), g(SCHRIFT_DATUM), g(SCHRIFT_ZITAT));
@@ -181,7 +197,7 @@ impl Befehle<'_> {
                 self.b("style.character.edit", json!({"name": n, "chars": {"size": rund(size)}}));
             }
         }
-        for (command, params) in mitwachsende_objekte(basis, chat, text, datum) {
+        for (command, params) in mitwachsende_objekte(self.doc, chat, text, datum) {
             self.b(command, params);
         }
     }

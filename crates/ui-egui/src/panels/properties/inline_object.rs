@@ -52,9 +52,12 @@ pub(super) fn inline_sections(app: &mut DesignApp, ui: &mut Ui, sel: InlineSel) 
     if frame.is_some() {
         crate::rtl::label(
             ui,
-            egui::RichText::new(tr(app, "W and H crop the picture. Double-click it or use its content grabber to move or scale it inside the frame."))
-                .size(10.5)
-                .color(crate::theme::Tokens::get(ui.ctx()).text_dim),
+            egui::RichText::new(tr(
+                app,
+                "W and H crop the picture. Double-click it or use its content grabber to move or scale it inside the frame.",
+            ))
+            .size(10.5)
+            .color(crate::theme::Tokens::get(ui.ctx()).text_dim),
         );
     }
     divider(ui);
@@ -62,7 +65,13 @@ pub(super) fn inline_sections(app: &mut DesignApp, ui: &mut Ui, sel: InlineSel) 
         section(ui, tr(app, if sel.content { "Content (selected)" } else { "Content" }), true);
         ui.horizontal(|ui| {
             widgets::caption_w(ui, tr(app, "Scale:"), 44.0);
-            if let Some(pct) = NumField::number("inline-content-scale", Some(sx * 100.0), "%", 1).name("Content scale").spinner().range(1.0, 10000.0).width(96.0).show(ui) {
+            if let Some(pct) = NumField::number("inline-content-scale", Some(sx * 100.0), "%", 1)
+                .name("Content scale")
+                .spinner()
+                .range(1.0, 10000.0)
+                .width(96.0)
+                .show(ui)
+            {
                 run(app, "anchored.content", json!({"scale": pct / 100.0}));
             }
         });
@@ -132,7 +141,8 @@ pub fn inline_control(app: &mut DesignApp, ui: &mut Ui, sel: InlineSel) {
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             widgets::caption_w(ui, tr(app, "Scale:"), 44.0);
-            if let Some(pct) = NumField::number("ctl-inline-scale", Some(100.0), "%", 1).name("Scale").spinner().range(1.0, 1000.0).width(86.0).show(ui)
+            if let Some(pct) =
+                NumField::number("ctl-inline-scale", Some(100.0), "%", 1).name("Scale").spinner().range(1.0, 1000.0).width(86.0).show(ui)
                 && (pct - 100.0).abs() > 1e-9
             {
                 run(app, "anchored.resize", json!({"width": size.0 * pct / 100.0}));
@@ -141,7 +151,13 @@ pub fn inline_control(app: &mut DesignApp, ui: &mut Ui, sel: InlineSel) {
         if let Some((_, (sx, _))) = o.picture_content() {
             ui.horizontal(|ui| {
                 widgets::caption_w(ui, tr(app, "Content:"), 44.0);
-                if let Some(pct) = NumField::number("ctl-inline-content", Some(sx * 100.0), "%", 1).name("Content scale").spinner().range(1.0, 10000.0).width(86.0).show(ui) {
+                if let Some(pct) = NumField::number("ctl-inline-content", Some(sx * 100.0), "%", 1)
+                    .name("Content scale")
+                    .spinner()
+                    .range(1.0, 10000.0)
+                    .width(86.0)
+                    .show(ui)
+                {
                     run(app, "anchored.content", json!({"scale": pct / 100.0}));
                 }
             });

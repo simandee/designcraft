@@ -80,7 +80,8 @@ pub fn zeigen(app: &mut DesignApp, neu: bool) -> Result<Value, String> {
 }
 
 /// Befehl jahresbuch.chatImport: ohne Angaben das Fenster mit „Neuer Chat“; mit
-/// `export` (Automatik) fügt es den Chat gleich ein und gibt seine Nummer zurück.
+/// `export` (Automatik) fügt es den Chat gleich ein und gibt ihn zurück (wie im Etikett).
+/// `python` wählt das Programm, das das Hilfsprogramm ausführt (sonst die Einstellung im Fenster).
 pub fn befehl_einfuegen(app: &mut DesignApp, p: &Value) -> Result<Value, String> {
     let Some(export) = p.get("export").and_then(Value::as_str) else { return zeigen(app, true) };
     app.jahresbuch.laden();
@@ -115,6 +116,7 @@ pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String>
         return serde_json::to_value(&chats).map(|c| json!({"chats": c})).map_err(|e| e.to_string());
     };
     let chat = chats.iter_mut().find(|c| u64::from(c.nummer) == n).ok_or_else(|| format!("Im Dokument gibt es keinen Chat {n}."))?;
+    let alt = chat.clone();
     if let Some(name) = p.get("name").and_then(Value::as_str) {
         chat.name = name.to_string();
     }
@@ -137,7 +139,7 @@ pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String>
     let chat = chat.clone();
     app.end_live_preview();
     let doc = app.session.active().map(|st| st.doc.clone()).ok_or("kein Dokument")?;
-    let mut befehle = gestaltung::befehle(&doc, &doc, &chat);
+    let mut befehle = gestaltung::geaenderte_befehle(&doc, Some(&alt), &chat);
     befehle.push(modell::speichern(&chats));
     skript(app, gestaltung::als_skript(&befehle))?;
     serde_json::to_value(&chat).map_err(|e| e.to_string())

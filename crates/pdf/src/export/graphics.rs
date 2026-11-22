@@ -422,7 +422,25 @@ pub(super) struct CoverageImage {
 /// tile, one image pixel per [`designcraft_compose::GRAIN_CELL`] points on the same grid, as a
 /// luminosity mask over black multiplied (dark grain) or white laid over (light grain), at the
 /// grain's opacity.
-pub(crate) fn draw_grain(s: &mut Surface, d: &designcraft_compose::Deco, g: designcraft_compose::Grain) {
+impl Exporter<'_> {
+    /// Paper grain over a shading box ([`draw_grain`]), as the export's standard allows: smoothed
+    /// only where PDF/A and PDF/X permit it, and in print files with CMYK ink (no RGB gets in).
+    pub(crate) fn grain(&self, s: &mut Surface, d: &designcraft_compose::Deco, g: designcraft_compose::Grain) {
+        let interpolate = RasterMode::for_standard(self.opts.standard).interpolate;
+        let ink = if self.for_print() {
+            device(&Color::cmyk(0.0, 0.0, 0.0, if g.light { 0.0 } else { 1.0 }), self.rgb_only)
+        } else if g.light {
+            rgb::Color::new(255, 255, 255).into()
+        } else {
+            rgb::Color::new(0, 0, 0).into()
+        };
+        draw_grain(s, d, g, interpolate, ink);
+    }
+}
+
+/// Paper grain over a shading box: the grain tile as a luminosity mask over `ink` (light grain
+/// in normal blending, dark grain multiplied), inside the box's outline.
+fn draw_grain(s: &mut Surface, d: &designcraft_compose::Deco, g: designcraft_compose::Grain, interpolate: bool, ink: krilla::color::Color) {
     let Some(bp) = &d.path else { return };
     let cell = designcraft_compose::GRAIN_CELL;
     let r = d.rect;
@@ -451,8 +469,8 @@ pub(crate) fn draw_grain(s: &mut Surface, d: &designcraft_compose::Deco, g: desi
     ) else {
         return;
     };
-    // Smoothed, as the screen's image sampling smooths the cells.
-    let Ok(image) = Image::from_custom(image, true) else { return };
+    // Smoothed, as the screen's image sampling smooths the cells (where the standard allows it).
+    let Ok(image) = Image::from_custom(image, interpolate) else { return };
     let mut sb = s.stream_builder();
     let mut ms = sb.surface();
     ms.push_transform(&tf(Affine::translate((area.x0, area.y0))));
@@ -460,11 +478,7 @@ pub(crate) fn draw_grain(s: &mut Surface, d: &designcraft_compose::Deco, g: desi
     ms.pop();
     ms.finish();
     let stream = sb.finish();
-    let (blend, ink) = if g.light {
-        (krilla::blend::BlendMode::Normal, rgb::Color::new(255, 255, 255))
-    } else {
-        (krilla::blend::BlendMode::Multiply, rgb::Color::new(0, 0, 0))
-    };
+    let blend = if g.light { krilla::blend::BlendMode::Normal } else { krilla::blend::BlendMode::Multiply };
     s.push_clip_path(&clip, &krilla::paint::FillRule::NonZero);
     s.push_blend_mode(blend);
     s.push_opacity(super::norm(g.opacity));

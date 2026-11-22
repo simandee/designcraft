@@ -125,6 +125,14 @@ impl AnchoredObject {
     /// The object's picture frame: the object itself when it holds a graphic, or the first
     /// graphic frame of its group (a chat photo with its offset outline and play button).
     /// (Index in the group, if any; the transform from the frame's space to the object's.)
+    /// Whether `m` keeps rectangles axis-aligned: no turn but quarter turns, no shear. Only such a
+    /// picture frame can be cropped by moving its sides.
+    pub fn axis_aligned(m: designcraft_geom::Affine) -> bool {
+        let [a, b, c, d, _, _] = m.as_coeffs();
+        let eps = 1e-9 * (a.abs() + b.abs() + c.abs() + d.abs()).max(1e-12);
+        (b.abs() <= eps && c.abs() <= eps) || (a.abs() <= eps && d.abs() <= eps)
+    }
+
     pub fn picture_frame(&self) -> Option<(Option<usize>, designcraft_geom::Affine)> {
         if matches!(self.item.content, crate::item::Content::Graphic(_)) {
             return Some((None, self.item.xf));

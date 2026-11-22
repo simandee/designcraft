@@ -39,7 +39,6 @@ mod walk;
 pub use booklet::{BookletKind, BookletOptions, booklet_pairs, export_booklet, merge_pdfs};
 use common::TagEntry;
 pub(crate) use common::{norm, q, registration, regular, solid_fill, tf, to_path};
-pub(crate) use graphics::draw_grain;
 use graphics::CoverageImage;
 #[cfg(test)]
 use images::ConstantImageHasher;

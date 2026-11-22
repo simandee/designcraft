@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover
     emoji_lib = None
 
 TZ = ZoneInfo("Europe/Berlin")
+# Anzeigenamen, solange der Export keine hergibt (eigene Nachrichten tragen keinen Namen).
 ICH, SIE = "Ich", "Sie"
 AUSBLENDEN = {10, 51, 59}  # Systemmeldungen, Hinweise zu selbstlöschenden Nachrichten, keine Anrufe
 WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
@@ -127,8 +128,11 @@ def datumszeile(d):
 
 
 def bereinigen(text):
-    """Zeichen aus dem privaten Unicode-Bereich entfernen (DesignCraft nutzt sie als Marker, z. B. Seitenzahl)."""
-    return "".join(c for c in (text or "") if unicodedata.category(c) != "Co")
+    """Zeichen aus dem privaten Unicode-Bereich (DesignCraft nutzt sie als Marker, z. B. Seitenzahl)
+    und einzelne Surrogate entfernen. Zeilenumbrüche jeder Art werden Zeilenwechsel in der Blase
+    (U+2028): ein Absatzende teilte die Nachricht, und CR oder VT verschöben alle Positionen danach."""
+    t = "".join(c for c in (text or "") if unicodedata.category(c) not in ("Co", "Cs"))
+    return re.sub(r"\r\n|[\r\n\x0b\x0c\x1c-\x1e\x85\u2029]", "\u2028", t)
 
 
 def umbrechbar(url):
@@ -396,12 +400,25 @@ class Importer:
         jid = getattr(self.a, "chat", None)
         return daten.get(jid) if jid and jid in daten else next(iter(daten.values()))
 
-    def personen_ermitteln(self, msgs):
-        """Personen des Chats: aus --personen oder aus den Absendern. Zweier-Chat: „Ich“ und „Sie“;
-        Gruppe (mehrere Absender): „Ich“ und „Person 1“, „Person 2“ … (nach Anzahl Nachrichten)."""
+    def personen_ermitteln(self, msgs, chat_name=None):
+        """Personen des Chats: aus --personen oder aus den Absendern. Zweier-Chat: „Ich“ und „Sie“
+        (ihr Name: der Absender oder der Name des Chats im Export); Gruppe (mehrere Absender): „Ich“
+        und „Person 1“, „Person 2“ … (nach Anzahl Nachrichten)."""
         vorgabe = getattr(self.a, "personen", None)
         if vorgabe:
             self.personen = json.loads(vorgabe) if vorgabe.strip().startswith("[") else json.load(open(vorgabe, encoding="utf-8"))
+            # Gruppe: wer seitdem dazugekommen ist, wird eine weitere Person (statt unter Person 1).
+            if any(p["key"].startswith("Person ") for p in self.personen):
+                bekannt = {i for p in self.personen for i in p.get("ids", [])}
+                neu = {}
+                for m in msgs:
+                    if not m.get("from_me") and m.get("sender") and m["sender"] not in bekannt:
+                        neu[m["sender"]] = neu.get(m["sender"], 0) + 1
+                n = max(int(p["key"].split()[1]) for p in self.personen if p["key"].startswith("Person "))
+                for sender in sorted(neu, key=lambda k: -neu[k]):
+                    self.personen.append({"key": f"Person {n + 1}", "name": sender, "ids": [sender],
+                                          "farbe": PERSONEN_FARBEN[n % len(PERSONEN_FARBEN)]})
+                    n += 1
         else:
             zaehler = {}
             for m in msgs:
@@ -414,7 +431,7 @@ class Importer:
                     self.personen.append({"key": f"Person {i + 1}", "name": sender, "ids": [sender],
                                           "farbe": PERSONEN_FARBEN[i % len(PERSONEN_FARBEN)]})
             else:
-                self.personen.append({"key": "Sie", "name": andere[0] if andere else SIE, "ids": andere,
+                self.personen.append({"key": "Sie", "name": andere[0] if andere else (bereinigen(chat_name).strip() or SIE), "ids": andere,
                                       "farbe": self.stil.get("farbe_sie", "#3554E0")})
         self.gruppe = any(p["key"] not in ("Ich", "Sie") for p in self.personen)
         self._nach_id = {i: p["key"] for p in self.personen for i in p.get("ids", [])}
@@ -425,7 +442,7 @@ class Importer:
     def nachrichten(self):
         chat = self.chat_daten()
         msgs = sorted(chat["messages"].values(), key=lambda m: m["timestamp"])
-        self.personen_ermitteln(msgs)
+        self.personen_ermitteln(msgs, chat.get("name"))
         von = date.fromisoformat(self.a.von) if self.a.von else None
         bis = date.fromisoformat(self.a.bis) if self.a.bis else None
         sichtbar = [m for m in msgs if m.get("message_type") not in AUSBLENDEN
@@ -490,7 +507,7 @@ class Importer:
     def namenszeile(self, a, key):
         """Gruppenchat: der Name über der Blase, in der Farbe der Person."""
         if self.gruppe and key != "Ich":
-            a.text(self.person(key)["name"], f"Name {key}")
+            self.lauf(a, self.person(key)["name"], f"Name {key}")
             a.text("\u2028")
 
     def zeitlauf(self, a, m):
@@ -517,7 +534,7 @@ class Importer:
         q = byid.get(m.get("reply"))
         wer = self.seite(q) if q else ("Sie" if not self.gruppe else self.personen[1]["key"])
         von_mir = wer == "Ich"
-        a.text(self.person(wer)["name"] if self.gruppe or wer != "Ich" else ICH, f"Zitat Name {wer}")
+        self.lauf(a, self.person(wer)["name"], f"Zitat Name {wer}", emoji_pt=EMOJI_PT * ZITAT_NAME * SCHRIFT["zitat"] / SCHRIFT["text"])
         a.text("\u2028")
         text = bereinigen(m.get("quoted_data") or (q.get("data") if q and not q.get("media") else "") or "")
         if q and q.get("media") and not text:
@@ -608,7 +625,9 @@ class Importer:
             if r == len(reihen) - 1:
                 self.zeitlauf(a, gruppe[-1])
             self.absaetze.append(a)
-        self.reaktionen(gruppe[-1], self.absaetze[-1])
+        # Reaktionen auf jedes Foto der Blase (alle von derselben Seite) unter die Blase
+        alle = [x for m in gruppe for x in (m.get("reactions") or [])]
+        self.reaktionen({**gruppe[-1], "reactions": alle}, self.absaetze[-1])
 
     def nachricht(self, m, byid):
         s = self.seite(m)
@@ -624,7 +643,8 @@ class Importer:
         elif typ == 4 or "vCards/" in daten:
             # Kontaktkarte: nur der Name (in "data" steht ein HTML-Link auf die .vcf)
             treffer = re.search(r">([^<]+)</a>", daten)
-            a.text("Kontakt: " + (treffer.group(1).strip() if treffer else "Kontaktkarte"), "Hinweis")
+            a.text("Kontakt: ", "Hinweis")
+            self.lauf(a, treffer.group(1).strip() if treffer else "Kontaktkarte", "Hinweis", emoji_pt=EMOJI_PT * HINWEIS * SCHRIFT["zitat"] / SCHRIFT["text"])
         elif m.get("media") and daten.strip().lower().startswith("the media is missing"):
             a.text("Anhang nicht mehr vorhanden", "Hinweis")
         elif m.get("media"):
@@ -669,7 +689,7 @@ class Importer:
                 a.stil = f"Emoji {s}"
                 self.lauf(a, text, emoji_pt=EMOJI_GROSS_PT)
             else:
-                self.lauf(a, text.replace("\n", "\u2028"))
+                self.lauf(a, text)
         self.zeitlauf(a, m)
         self.absaetze.append(a)
         self.reaktionen(m, a)
@@ -778,8 +798,11 @@ class Importer:
         fl_chars = {"size": 1, "leading": {"kind": "points", "value": H}}
         s("style.paragraph.create", name="Spalte Schatten", chars=fl_chars,
           para={**flaeche, "shadingColor": "Spalte · Schatten", "shadingSpeckle": float(self.stil.get("sprenkel", {}).get("rahmen", 1.0))})
-        s("style.paragraph.create", name="Seitenzahl", para={"align": "center"},
-          chars={"fontFamily": self.schrift, "fontStyle": "Bold", "size": 18, "fill": "Farbe Ich"})
+        if self.dok is None:
+            # Nur im eigenen Chat-Dokument: im Buch kommt die Seitenzahl von dessen Mustervorlage,
+            # und ein Format „Seitenzahl“ des Buchs bleibt unangetastet.
+            s("style.paragraph.create", name="Seitenzahl", para={"align": "center"},
+              chars={"fontFamily": self.schrift, "fontStyle": "Bold", "size": 18, "fill": "Farbe Ich"})
         z = self.groesse("zitat")
         s("style.character.create", name="Zeit", chars={"size": self.groesse("zeit"), "fontStyle": "Medium"})
         for key in keys:
@@ -1161,14 +1184,19 @@ class Importer:
         wo er im Text beginnt (Bytes), beim Fortsetzen hinter dem vorhandenen Chat."""
         s = self.s
         text = "\n".join(a.inhalt for a in self.absaetze)
+        # Byte-Position jedes Zeichens, einmal gezählt (statt jedes Mal den Anfang neu zu kodieren)
+        offs = [0]
+        for ch in text:
+            offs.append(offs[-1] + len(ch.encode()))
         def b(n):
-            return versatz + len(text[:n].encode())
+            return versatz + offs[n]
         pos = 0
         einfuegen = []
         for a in self.absaetze:
             inhalt = a.inhalt
             s("text.select", story=story, anchor=b(pos), focus=b(pos + len(inhalt)))
-            s("style.paragraph.apply", name=a.stil)
+            # clearOverrides: Abweichungen, die der Absatz beim Einfügen vom Nachbarn geerbt hat, fallen weg.
+            s("style.paragraph.apply", name=a.stil, clearOverrides=True)
             p = pos
             for t, cs in a.laeufe:
                 if cs:
@@ -1190,6 +1218,32 @@ class Importer:
         with open(pfad, "w", encoding="utf-8") as fh:
             fh.write("\n".join(json.dumps(x, ensure_ascii=False) for x in schritte))
 
+    def einsetzen(self, text, anfang, ende, laenge):
+        """`text` (ganze Absätze) anstelle der Bytes anfang..ende des Textes "__STORY__" setzen, der
+        laenge Bytes lang ist: in einen leeren Text, hinten an (anfang = ende = laenge, Fortsetzen)
+        oder anstelle eines Zeitraums (Neu aufbauen). Der Text davor und dahinter bleibt."""
+        s = self.s
+        if ende < laenge:
+            neu = text + "\n" if text else ""
+        elif anfang == laenge and anfang > 0:
+            neu = "\n" + text if text else ""
+        elif not text and anfang > 0:
+            anfang -= 1  # sonst bliebe hinten ein leerer Absatz
+            neu = ""
+        else:
+            neu = text
+        s("text.select", story="__STORY__", anchor=anfang, focus=ende)
+        if not neu:
+            if ende > anfang:
+                s("text.delete")
+            return
+        s("text.insert", text=neu, raw=True)
+        # Eingefügter Text erbt das Zeichenformat vor der Einfügestelle, hinten an einem Chat die
+        # Uhrzeit: zurück auf [Ohne], die Zeichenformate setzt inhalt().
+        s("text.select", story="__STORY__", anchor=anfang, focus=anfang + len(neu.encode()))
+        s("style.character.apply", name="[None]")
+        self.inhalt("__STORY__", versatz=anfang + (1 if neu.startswith("\n") else 0))
+
     def skript(self):
         s = self.s
         if self.dok is not None:
@@ -1198,15 +1252,7 @@ class Importer:
             self.einrichtung()
             einrichtung, self.steps = self.steps, []
             text = "\n".join(a.inhalt for a in self.absaetze)
-            nach = getattr(self.a, "anhaengen", None)
-            if nach is not None:
-                # Fortsetzen: hinter dem vorhandenen Text (nach Bytes), der bleibt, wie er ist.
-                s("text.select", story="__STORY__", anchor=nach, focus=nach)
-                s("text.insert", text="\n" + text, raw=True)
-                self.inhalt("__STORY__", versatz=nach + 1)
-            else:
-                s("story.setText", story="__STORY__", text=text)
-                self.inhalt("__STORY__")
+            self.einsetzen(text, *(getattr(self.a, "ersetzen", None) or (0, 0, 0)))
             self.schreiben(self.a.einrichtung_ausgabe, einrichtung)
             self.schreiben(self.a.ausgabe, self.steps)
             return len(einrichtung) + len(self.steps)
@@ -1279,10 +1325,14 @@ def main():
     ap.add_argument("--von"); ap.add_argument("--bis"); ap.add_argument("--emoji-font"); ap.add_argument("--arbeitsordner")
     ap.add_argument("--dokument", help="Ins bestehende Dokument: document.inspect als JSON-Datei (DesignCraft-Menü Jahresbuch)")
     ap.add_argument("--einrichtung-ausgabe", help="mit --dokument: Datei für das Einrichtungs-Skript")
-    ap.add_argument("--anhaengen", type=int, help="mit --dokument: den Chat hinten an den Text anhängen, der so viele Bytes lang ist (Fortsetzen)")
+    ap.add_argument("--ersetzen", type=int, nargs=3, metavar=("ANFANG", "ENDE", "LAENGE"),
+                    help="mit --dokument: den Chat anstelle der Bytes ANFANG..ENDE des Textes setzen, der LAENGE Bytes "
+                         "lang ist (Fortsetzen: alle drei = LAENGE; Neu aufbauen: der Bereich des Zeitraums)")
     args = ap.parse_args()
     imp = Importer(args)
     imp.aufbauen()
+    if not imp.absaetze:
+        sys.exit("Im gewählten Zeitraum gibt es keine Nachrichten.")
     if args.personen_ausgabe:
         with open(args.personen_ausgabe, "w", encoding="utf-8") as fh:
             json.dump(imp.personen, fh, ensure_ascii=False)

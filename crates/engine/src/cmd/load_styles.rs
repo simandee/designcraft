@@ -120,7 +120,14 @@ fn char_swatches(c: &CharAttrs) -> impl Iterator<Item = &String> {
 }
 
 fn para_swatches(p: &ParaAttrs) -> impl Iterator<Item = &String> {
-    p.rule_above.iter().chain(&p.rule_below).map(|r| &r.color).chain(&p.shading_color).chain(&p.shading_shadow_color).chain(&p.shading_speckle_color).chain(&p.border_color)
+    p.rule_above
+        .iter()
+        .chain(&p.rule_below)
+        .map(|r| &r.color)
+        .chain(&p.shading_color)
+        .chain(&p.shading_shadow_color)
+        .chain(&p.shading_speckle_color)
+        .chain(&p.border_color)
 }
 
 /// Decide what happens to every asked-for style and to the styles those name. A style the

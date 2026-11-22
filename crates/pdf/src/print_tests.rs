@@ -501,3 +501,23 @@ fn rgb_blend_spot_only_document_with_cmyk_alternate_attaches_default_cmyk() {
     assert_eq!(n, 4);
     assert_eq!(prof, craft_cms::builtin::COATED_FOGRA39_ICC);
 }
+
+/// Paper grain on paragraph shading (shading noise) keeps PDF/X-4 and PDF/A-2b exports valid:
+/// no image interpolation, and no RGB ink in the print file.
+#[test]
+fn shading_grain_keeps_pdf_x4_and_pdf_a_valid() {
+    let mut d = Document::new(&NewDocument::default());
+    let lid = d.default_layer();
+    let (_, sid) = d.add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, 36.0, 300.0, 120.0), lid, "Grain under this line", Default::default()).unwrap();
+    let para = &mut d.story_mut(sid).unwrap().paras[0].para;
+    para.shading_on = Some(true);
+    para.shading_color = Some("C=0 M=0 Y=100 K=0".into());
+    para.shading_tint = Some(1.0);
+    para.shading_noise = Some(0.5);
+    let x4 = crate::export_pdf_with_report(&d, &Cache::new(), &PdfOptions { standard: crate::Standard::PdfX4, ..PdfOptions::default() }).unwrap();
+    assert!(crate::check_pdfx4(&x4.bytes).is_empty(), "{:?}", crate::check_pdfx4(&x4.bytes));
+    assert!(!x4.warnings.iter().any(|w| w.starts_with("PDF/X-4")), "{:?}", x4.warnings);
+    let a2b = crate::export_pdf_with_report(&d, &Cache::new(), &PdfOptions { standard: crate::Standard::PdfA2b, ..PdfOptions::default() });
+    assert!(a2b.is_ok(), "PDF/A-2b with grain: {:?}", a2b.err());
+}
+

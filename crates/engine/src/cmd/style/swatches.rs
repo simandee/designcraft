@@ -28,8 +28,8 @@ pub(super) fn create_swatch(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
-/// `swatch.create {base, tint}`: a tint swatch of colour swatch `base` (as the Swatches panel's
-/// New Tint Swatch). It follows its base's colour; its own name defaults to "<base> <tint>%".
+/// `swatch.create {base, tint}`: a tint swatch of colour swatch `base`. It follows its base's
+/// colour; its name defaults to "<base> <tint>%" and stays as given when the tint changes later.
 fn create_tint_swatch(s: &mut Session, p: &Value, base: &str) -> Result<Value> {
     const ID: &str = "swatch.create";
     let tint = p.get("tint").and_then(Value::as_f64).ok_or_else(|| bad(ID, "a tint swatch needs a tint (0–1)"))?;
@@ -46,7 +46,13 @@ fn create_tint_swatch(s: &mut Session, p: &Value, base: &str) -> Result<Value> {
     let base = base.to_string();
     s.edit(|d, _| {
         let name = Styles::unique_name(|n| d.swatch(n).is_some(), &name);
-        d.swatches.push(Swatch { name: name.clone(), value: SwatchValue::Tint { base, tint: tint as f32 }, locked: false, named: true, hidden: false });
+        d.swatches.push(Swatch {
+            name: name.clone(),
+            value: SwatchValue::Tint { base, tint: tint as f32 },
+            locked: false,
+            named: true,
+            hidden: false,
+        });
         Ok(json!({"name": name}))
     })
 }
@@ -1046,5 +1052,29 @@ mod gradient_stroke_tests {
         // shows its middle.
         assert!(s[1] < 60 && s[0] > 80 && s[2] > 80, "screen: the stroke is painted, {s:?}");
         assert!((0..3).all(|i| s[i].abs_diff(p[i]) < 40), "screen {s:?}, pdf {p:?}");
+    }
+}
+
+#[cfg(test)]
+mod tint_tests {
+    use serde_json::json;
+
+    use crate::Session;
+
+    /// A tint swatch follows its base colour, lighter, and changes with it; a tint of a swatch that
+    /// is not a colour, or outside 0–1, is refused.
+    #[test]
+    fn a_tint_swatch_follows_its_base_lighter() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("swatch.create", &json!({"name": "Brand", "color": "#3554E0"})).unwrap();
+        let name = s.execute("swatch.create", &json!({"base": "Brand", "tint": 0.5})).unwrap()["name"].as_str().unwrap().to_string();
+        let sum = |s: &Session, n: &str| s.doc().unwrap().doc.resolve_color(n, 1.0).unwrap().to_rgb().iter().sum::<f32>();
+        assert!(sum(&s, &name) > sum(&s, "Brand"), "lighter than its base");
+        let before = sum(&s, &name);
+        s.execute("swatch.options", &json!({"name": "Brand", "color": "#000000"})).unwrap();
+        assert!(sum(&s, &name) < before, "it follows its base");
+        assert!(s.execute("swatch.create", &json!({"base": "[None]", "tint": 0.5})).is_err(), "not a colour swatch");
+        assert!(s.execute("swatch.create", &json!({"base": "Brand", "tint": 1.5})).is_err(), "tint above 1");
     }
 }

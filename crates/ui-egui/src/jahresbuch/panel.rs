@@ -60,7 +60,12 @@ impl<T> Default for Hintergrund<T> {
 
 impl<T: Send + 'static> Hintergrund<T> {
     /// Das Ergebnis für `schluessel`, sobald es da ist; `arbeit` läuft dafür einmal im Hintergrund.
-    fn holen(&mut self, ctx: &egui::Context, schluessel: String, arbeit: impl FnOnce() -> Result<T, String> + Send + 'static) -> Option<&Result<T, String>> {
+    fn holen(
+        &mut self,
+        ctx: &egui::Context,
+        schluessel: String,
+        arbeit: impl FnOnce() -> Result<T, String> + Send + 'static,
+    ) -> Option<&Result<T, String>> {
         if self.schluessel != schluessel {
             self.schluessel = schluessel;
             self.wert = None;
@@ -95,6 +100,13 @@ fn starten(_ctx: egui::Context, f: impl FnOnce() + Send + 'static) {
     f();
 }
 
+/// Eine Arbeit, die das Programm anhält (Hilfsprogramm und Skripte): sie läuft ein Bild nach dem
+/// Klick, damit „wird aufbereitet …“ vorher im Fenster steht.
+enum Arbeit {
+    Einfuegen(Auftrag),
+    Weiter(Auftrag, Chat, einfuegen::Wohin),
+}
+
 /// Was das Fenster sich merkt.
 #[derive(Default)]
 pub struct Zustand {
@@ -122,6 +134,50 @@ pub struct Zustand {
     name: Option<(u32, String)>,
     /// Fortsetzen oder Neu aufbauen ist aufgeklappt: (Chat, neu aufbauen?, Zeitraum).
     weiter: Option<(u32, bool, Option<NaiveDate>, Option<NaiveDate>)>,
+    /// Die bestellte Arbeit und das Bild (egui-Durchgang), in dem sie bestellt wurde.
+    arbeit: Option<(Arbeit, u64)>,
+}
+
+/// Die Arbeit für das nächste Bild bestellen.
+fn bestellen(app: &mut DesignApp, ui: &Ui, arbeit: Arbeit) {
+    app.jahresbuch.arbeit = Some((arbeit, ui.ctx().cumulative_pass_nr()));
+    app.jahresbuch.fehler = None;
+    ui.ctx().request_repaint();
+}
+
+/// Der Hinweis, solange eine Arbeit bestellt ist.
+fn wird_aufbereitet(app: &DesignApp, ui: &mut Ui) {
+    if app.jahresbuch.arbeit.is_some() {
+        klein(ui, "⏳ Chat wird aufbereitet … Bei vielen Nachrichten dauert das eine Weile.");
+    }
+}
+
+/// Die bestellte Arbeit ausführen, sobald das Bild mit dem Hinweis gezeigt ist. War das Fenster
+/// länger zu, verfällt sie (sie liefe sonst unerwartet später).
+fn erledigen(app: &mut DesignApp, ui: &Ui) {
+    let jetzt = ui.ctx().cumulative_pass_nr();
+    let Some((arbeit, bestellt)) = app.jahresbuch.arbeit.take_if(|(_, b)| jetzt > *b) else { return };
+    if jetzt > bestellt + 3 {
+        return;
+    }
+    app.end_live_preview();
+    let ergebnis = match &arbeit {
+        Arbeit::Einfuegen(auftrag) => einfuegen::einfuegen(app, auftrag).map(|_| {
+            app.jahresbuch.neu_anzeigen = false;
+            merke(&[
+                ("export", json!(auftrag.export)),
+                ("medien", json!(auftrag.medien)),
+                ("python", json!(auftrag.python)),
+                ("von", json!(auftrag.von)),
+                ("bis", json!(auftrag.bis)),
+            ]);
+        }),
+        Arbeit::Weiter(auftrag, chat, wohin) => einfuegen::fortsetzen(app, auftrag, chat, *wohin).map(|_| app.jahresbuch.weiter = None),
+    };
+    if let Err(e) = ergebnis {
+        app.status(e.clone());
+        app.jahresbuch.fehler = Some(e);
+    }
 }
 
 impl Zustand {
@@ -133,7 +189,8 @@ impl Zustand {
         self.vorgabe = lies_stil();
         let s = |k: &str| self.vorgabe.get(k).and_then(Value::as_str).map(str::to_string);
         let home = super::home();
-        self.export = s("export").unwrap_or_else(|| home.join("WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json").to_string_lossy().into_owned());
+        self.export =
+            s("export").unwrap_or_else(|| home.join("WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json").to_string_lossy().into_owned());
         self.medien = s("medien").unwrap_or_else(|| home.join("WhatsApp-Export/ausgabe").to_string_lossy().into_owned());
         self.python = s("python").unwrap_or_else(standard_python);
         let datum = |k: &str| s(k).and_then(|t| NaiveDate::parse_from_str(&t, "%Y-%m-%d").ok());
@@ -225,7 +282,11 @@ fn prozent(ui: &mut Ui, id: &str, name: &str, v: f64, enabled: bool) -> Option<f
             ui.spacing_mut().slider_width = 130.0;
             ui.spacing_mut().slider_rail_height = 2.0;
             let mut x = v * 100.0;
-            let s = egui::Slider::new(&mut x, 0.0..=100.0).integer().show_value(false).handle_shape(egui::style::HandleShape::Circle).trailing_fill(false);
+            let s = egui::Slider::new(&mut x, 0.0..=100.0)
+                .integer()
+                .show_value(false)
+                .handle_shape(egui::style::HandleShape::Circle)
+                .trailing_fill(false);
             if ui.add(s).changed() {
                 neu = Some(x / 100.0);
             }
@@ -237,6 +298,7 @@ fn prozent(ui: &mut Ui, id: &str, name: &str, v: f64, enabled: bool) -> Option<f
 /// Das Fenster zeichnen.
 pub fn show(app: &mut DesignApp, ui: &mut Ui) {
     app.jahresbuch.laden();
+    erledigen(app, ui);
     let Some(st) = app.session.active() else {
         widgets::selection_band(ui, "Jahresbuch");
         klein(ui, "Zuerst das Buch öffnen (oder ein neues Dokument anlegen).");
@@ -254,7 +316,10 @@ pub fn show(app: &mut DesignApp, ui: &mut Ui) {
     }
     let chat = markiert.filter(|_| !z.neu_anzeigen).and_then(|n| chats.iter().find(|c| c.nummer == n)).cloned();
     match chat {
-        Some(chat) => chat_ansicht(app, ui, chat, &chats, markiert_text.map_or(0, |(_, sid)| sid.0)),
+        Some(chat) => {
+            let story = modell::text_des_chats(&doc, &chat, markiert_text.map(|(_, sid)| sid)).map_or(0, |sid| sid.0);
+            chat_ansicht(app, ui, chat, &chats, story);
+        }
         None => neuer_chat(app, ui, &chats, ziel),
     }
     // Ein Regler oder Farbwähler wird noch gezogen: die Vorschau bleibt offen (ein Schritt).
@@ -283,7 +348,11 @@ fn pfad_feld(app: &mut DesignApp, ui: &mut Ui, ordner: bool) {
         ui.add(egui::TextEdit::singleline(wert).desired_width(fw - 72.0).font(egui::FontId::proportional(11.0)));
         if widgets::outline_button(ui, "Wählen …", 64.0).clicked() {
             let setze = move |app: &mut DesignApp, pfad: String| {
-                if ordner { app.jahresbuch.medien = pfad } else { app.jahresbuch.export = pfad }
+                if ordner {
+                    app.jahresbuch.medien = pfad
+                } else {
+                    app.jahresbuch.export = pfad
+                }
                 Ok(Value::Null)
             };
             let r = if ordner { app.ask_folder("Medienordner wählen", Bound::App, setze) } else { app.ask_open("chatExport", Bound::App, setze) };
@@ -308,11 +377,8 @@ fn neuer_chat(app: &mut DesignApp, ui: &mut Ui, chats: &[Chat], ziel: Option<boo
     let z = &mut app.jahresbuch;
     let export_da = std::path::Path::new(&z.export).is_file();
     let (python, export) = (z.python.clone(), z.export.clone());
-    let liste = if export_da {
-        z.liste.holen(&ctx, export.clone(), move || hilfsprogramm(&python, &["--liste".into(), export])).cloned()
-    } else {
-        None
-    };
+    let liste =
+        if export_da { z.liste.holen(&ctx, export.clone(), move || hilfsprogramm(&python, &["--liste".into(), export])).cloned() } else { None };
     let mut gewaehlt: Option<ExportChat> = None;
     match (&liste, export_da) {
         (_, false) => klein(ui, "Den WhatsApp-Export (JSON) wählen."),
@@ -320,7 +386,8 @@ fn neuer_chat(app: &mut DesignApp, ui: &mut Ui, chats: &[Chat], ziel: Option<boo
         (Some(Err(e)), true) => klein(ui, &format!("Der Export lässt sich nicht lesen: {e}")),
         (Some(Ok(l)), true) => {
             let jetzt = z.chat.as_ref().and_then(|c| l.iter().position(|x| &x.chat == c)).unwrap_or(0);
-            let namen: Vec<String> = l.iter().map(|c| format!("{} ({} Nachrichten{})", c.name, c.nachrichten, if c.gruppe { ", Gruppe" } else { "" })).collect();
+            let namen: Vec<String> =
+                l.iter().map(|c| format!("{} ({} Nachrichten{})", c.name, c.nachrichten, if c.gruppe { ", Gruppe" } else { "" })).collect();
             if let Some(i) = widgets::dropdown_list(ui, namen.get(jetzt).map_or("", String::as_str), fw, &namen, Some(jetzt)) {
                 z.chat = l.get(i).map(|c| c.chat.clone());
             }
@@ -369,7 +436,9 @@ fn neuer_chat(app: &mut DesignApp, ui: &mut Ui, chats: &[Chat], ziel: Option<boo
     });
     ui.add_space(10.0);
     let bereit = export_da && gewaehlt.is_some();
-    if knopf(ui, "Chat einfügen", fw, bereit).clicked() && let Some(c) = gewaehlt {
+    if knopf(ui, "Chat einfügen", fw, bereit).clicked()
+        && let Some(c) = gewaehlt
+    {
         let z = &app.jahresbuch;
         let wie = z.aussehen.and_then(|n| chats.iter().find(|c| c.nummer == n));
         let auftrag = Auftrag {
@@ -383,25 +452,9 @@ fn neuer_chat(app: &mut DesignApp, ui: &mut Ui, chats: &[Chat], ziel: Option<boo
             stil: wie.map_or_else(|| z.vorgabe.clone(), |c| c.stil.clone()),
             farben_wie: wie.map(|c| c.personen.clone()).unwrap_or_default(),
         };
-        app.end_live_preview();
-        match einfuegen::einfuegen(app, &auftrag) {
-            Ok(_) => {
-                app.jahresbuch.fehler = None;
-                app.jahresbuch.neu_anzeigen = false;
-                merke(&[
-                    ("export", json!(auftrag.export)),
-                    ("medien", json!(auftrag.medien)),
-                    ("python", json!(auftrag.python)),
-                    ("von", json!(auftrag.von)),
-                    ("bis", json!(auftrag.bis)),
-                ]);
-            }
-            Err(e) => {
-                app.status(e.clone());
-                app.jahresbuch.fehler = Some(e);
-            }
-        }
+        bestellen(app, ui, Arbeit::Einfuegen(auftrag));
     }
+    wird_aufbereitet(app, ui);
     if let Some(e) = &app.jahresbuch.fehler {
         ui.add_space(4.0);
         let farbe = ui.visuals().error_fg_color;
@@ -415,7 +468,13 @@ fn knopf(ui: &mut Ui, label: &str, w: f32, enabled: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(vec2(w, 26.0), if enabled { Sense::click() } else { Sense::hover() });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
-    let fill = if !enabled { t.well } else if resp.hovered() { t.accent } else { t.accent_strong };
+    let fill = if !enabled {
+        t.well
+    } else if resp.hovered() {
+        t.accent
+    } else {
+        t.accent_strong
+    };
     ui.painter().rect_filled(r, 3.0, fill);
     let farbe = if enabled { Color32::WHITE } else { t.text_disabled };
     ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, crate::theme::semibold(12.0), farbe);
@@ -430,10 +489,17 @@ pub(super) fn anwenden(app: &mut DesignApp, alle: &[Chat], chat: &Chat) {
     let Some(st) = app.session.active() else { return };
     // Eine laufende Vorschau spielt ihr Skript immer auf dem Stand davor ab.
     let basis = st.interaction.as_ref().map_or_else(|| st.doc.clone(), |i| i.doc.clone());
-    let mut befehle = g::befehle(&basis, &basis, chat);
+    let alt = modell::chats(&basis, &app.jahresbuch.vorgabe).into_iter().find(|c| c.nummer == chat.nummer);
+    let mut befehle = g::geaenderte_befehle(&basis, alt.as_ref(), chat);
     let neu: Vec<Chat> = alle.iter().map(|c| if c.nummer == chat.nummer { chat.clone() } else { c.clone() }).collect();
     befehle.push(modell::speichern(&neu));
     app.live_preview("Chat-Gestaltung", "script.run", json!({"text": g::als_skript(&befehle)}));
+}
+
+/// Kennung eines Zahlenfelds von `chat`: je Chat eine eigene, damit ein getippter, noch nicht
+/// bestätigter Wert nicht im Chat landet, der als Nächstes angeklickt wird.
+fn feld_id(chat: &Chat, pfad: &str) -> String {
+    format!("{}-{pfad}", chat.nummer)
 }
 
 fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat], story: u64) {
@@ -458,7 +524,9 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
         }
     });
     let mut info = Vec::new();
-    if let (v, b @ Some(_)) | (v @ Some(_), b) = (NaiveDate::parse_from_str(&chat.von, "%Y-%m-%d").ok(), NaiveDate::parse_from_str(&chat.bis, "%Y-%m-%d").ok()) {
+    if let (v, b @ Some(_)) | (v @ Some(_), b) =
+        (NaiveDate::parse_from_str(&chat.von, "%Y-%m-%d").ok(), NaiveDate::parse_from_str(&chat.bis, "%Y-%m-%d").ok())
+    {
         info.push(kalender::text(v, b));
     }
     if !chat.personen.is_empty() {
@@ -482,11 +550,13 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
         klein(ui, "Klick aufs Farbfeld: Farbe ändern. Sie färbt Blasen, Schatten und Namen.");
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            for (pfad, name, standard) in [g::TEXTFARBE, g::PAPIER] {
-                if let Some(f) = farbfeld(ui, &format!("{}-{name}", vorher.nummer), &chat.text(pfad, standard), name) {
+            for &(pfad, name, standard) in g::chat_farben(&vorher) {
+                let (label, beschreibung) =
+                    if name == g::AKZENT.1 { ("Akzent", "Akzent: Datum, Verzierungen und Schatten der Spalten-Box") } else { (name, name) };
+                if let Some(f) = farbfeld(ui, &format!("{}-{name}", vorher.nummer), &chat.text(pfad, standard), beschreibung) {
                     chat.setze(pfad, json!(f));
                 }
-                widgets::caption(ui, name);
+                widgets::caption(ui, label);
                 ui.add_space(16.0);
             }
         });
@@ -499,9 +569,16 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
             chat.setze("schrift_chat", json!(schriften[i]));
         }
         ui.add_space(4.0);
-        for ((pfad, standard), label) in [(g::SCHRIFT_TEXT, "Nachrichtentext"), (g::SCHRIFT_ZEIT, "Uhrzeit"), (g::SCHRIFT_DATUM, "Datum"), (g::SCHRIFT_ZITAT, "Zitat und Hinweise")] {
-            let v = chat.zahl(pfad, standard);
-            if let Some(n) = zeile(ui, label, LW, |ui| NumField::points(pfad, Some(v), 2).name(label).width(86.0).spinner().step(0.1).range(4.0, 24.0).presets(GROESSEN).show(ui)) {
+        for ((pfad, standard), label) in [
+            (g::SCHRIFT_TEXT, "Nachrichtentext"),
+            (g::SCHRIFT_ZEIT, "Uhrzeit"),
+            (g::SCHRIFT_DATUM, "Datum"),
+            (g::SCHRIFT_ZITAT, "Zitat und Hinweise"),
+        ] {
+            let (v, id) = (chat.zahl(pfad, standard), feld_id(&vorher, pfad));
+            if let Some(n) = zeile(ui, label, LW, |ui| {
+                NumField::points(&id, Some(v), 2).name(label).width(86.0).spinner().step(0.1).range(4.0, 24.0).presets(GROESSEN).show(ui)
+            }) {
                 chat.setze(pfad, json!(n));
             }
         }
@@ -514,8 +591,10 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
             (g::ABSTAND_GLEICH, "Gleiche Person"),
             (g::ABSTAND_WECHSEL, "Personenwechsel"),
         ] {
-            let v = chat.zahl(pfad, standard);
-            if let Some(n) = zeile(ui, label, LW, |ui| NumField::points(pfad, Some(v), 1).name(label).width(86.0).spinner().step(0.5).range(0.0, 72.0).show(ui)) {
+            let (v, id) = (chat.zahl(pfad, standard), feld_id(&vorher, pfad));
+            if let Some(n) =
+                zeile(ui, label, LW, |ui| NumField::points(&id, Some(v), 1).name(label).width(86.0).spinner().step(0.5).range(0.0, 72.0).show(ui))
+            {
                 chat.setze(pfad, json!(n));
             }
         }
@@ -523,7 +602,7 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
 
     klapp(ui, "Korn und Rauschen", true, |ui| {
         let regler = |ui: &mut Ui, chat: &mut Chat, label: &str, (pfad, standard): (&str, f64), an: bool| {
-            if let Some(v) = zeile(ui, label, LW, |ui| prozent(ui, pfad, label, chat.zahl(pfad, standard), an)) {
+            if let Some(v) = zeile(ui, label, LW, |ui| prozent(ui, &feld_id(chat, pfad), label, chat.zahl(pfad, standard), an)) {
                 chat.setze(pfad, json!((v * 100.0).round() / 100.0));
             }
         };
@@ -540,7 +619,7 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
             });
             ui.add_space(4.0);
             let (pfad, standard) = g::RAUSCHEN_BLASEN;
-            if let Some(v) = prozent(ui, pfad, "Rauschen auf den Blasen", chat.zahl(pfad, standard), an) {
+            if let Some(v) = prozent(ui, &feld_id(&vorher, pfad), "Rauschen auf den Blasen", chat.zahl(pfad, standard), an) {
                 chat.setze(pfad, json!((v * 100.0).round() / 100.0));
             }
         });
@@ -562,8 +641,8 @@ fn chat_ansicht(app: &mut DesignApp, ui: &mut Ui, mut chat: Chat, alle: &[Chat],
     }
 }
 
-/// Fortsetzen (neue Nachrichten hinten anhängen) und Neu aufbauen (den Text des Chats für einen
-/// Zeitraum neu setzen), jeweils mit Zeitraum und Bestätigung.
+/// Fortsetzen (neue Nachrichten hinten anhängen) und Neu aufbauen (die Tage eines Zeitraums neu
+/// setzen, der Rest bleibt), jeweils mit Zeitraum und Bestätigung.
 fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
     let fw = widgets::full_width(ui);
     let datum = |t: &str| NaiveDate::parse_from_str(t, "%Y-%m-%d").ok();
@@ -575,7 +654,10 @@ fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
             if widgets::outline_button(ui, "Fortsetzen …", half).on_hover_text("Neue Nachrichten hinten anhängen").clicked() {
                 // Ab dem Tag nach dem Ende bis zum Ende jenes Monats.
                 let ab = datum(&chat.bis).and_then(|b| b.succ_opt());
-                let bis = ab.and_then(|a| a.checked_add_months(chrono::Months::new(1))).and_then(|m| chrono::Datelike::with_day(&m, 1)).and_then(|m| m.pred_opt());
+                let bis = ab
+                    .and_then(|a| a.checked_add_months(chrono::Months::new(1)))
+                    .and_then(|m| chrono::Datelike::with_day(&m, 1))
+                    .and_then(|m| m.pred_opt());
                 app.jahresbuch.weiter = Some((chat.nummer, false, ab, bis));
             }
             if widgets::outline_button(ui, "Neu aufbauen …", half).on_hover_text("Den Text dieses Chats neu setzen").clicked() {
@@ -587,7 +669,7 @@ fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
     let Some((_, ersetzen, mut von, mut bis)) = offen else { return };
     if ersetzen {
         ui.label(
-            egui::RichText::new("⚠ Der Text dieses Chats wird für den Zeitraum neu gesetzt. Eigene Änderungen im Text gehen verloren; Name, Farben und Gestaltung bleiben.")
+            egui::RichText::new("⚠ Die Tage im gewählten Zeitraum werden neu gesetzt; eigene Änderungen dort gehen verloren. Was davor und danach steht, bleibt, ebenso Name, Farben und Gestaltung.")
                 .size(10.5)
                 .color(ui.visuals().warn_fg_color),
         );
@@ -597,12 +679,25 @@ fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
     widgets::caption(ui, "Zeitraum");
     kalender::feld(ui, &format!("weiter-{}", chat.nummer), &mut von, &mut bis, fw);
     app.jahresbuch.weiter = Some((chat.nummer, ersetzen, von, bis));
+    // Fortsetzen braucht einen Anfang nach dem Ende des Chats, sonst stünden Tage doppelt im Buch.
+    let ende = datum(&chat.bis);
+    let hindernis = match (ersetzen, von, ende) {
+        (true, ..) => None,
+        (false, None, _) => Some("Ab wann? Bitte im Kalender den ersten neuen Tag wählen.".to_string()),
+        (false, Some(v), Some(e)) if v <= e => {
+            Some(format!("Der Chat reicht schon bis {}. Bitte einen späteren Anfang wählen (oder „Neu aufbauen“).", kalender::kurz(e)))
+        }
+        _ => None,
+    };
+    if let Some(h) = &hindernis {
+        ui.label(egui::RichText::new(format!("⚠ {h}")).size(10.5).color(ui.visuals().warn_fg_color));
+    }
     ui.add_space(4.0);
     let (ok, abbrechen) = widgets::button_pair(ui, if ersetzen { "Neu aufbauen" } else { "Anhängen" }, "Abbrechen");
     if abbrechen {
         app.jahresbuch.weiter = None;
     }
-    if ok {
+    if ok && hindernis.is_none() {
         let z = &app.jahresbuch;
         let oder = |a: &str, b: &str| if a.is_empty() { b.to_string() } else { a.to_string() };
         let auftrag = Auftrag {
@@ -617,18 +712,9 @@ fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
             farben_wie: Vec::new(),
         };
         let wohin = if ersetzen { einfuegen::Wohin::Ersetzen(story) } else { einfuegen::Wohin::Anhaengen(story) };
-        app.end_live_preview();
-        match einfuegen::fortsetzen(app, &auftrag, chat, wohin) {
-            Ok(_) => {
-                app.jahresbuch.weiter = None;
-                app.jahresbuch.fehler = None;
-            }
-            Err(e) => {
-                app.status(e.clone());
-                app.jahresbuch.fehler = Some(e);
-            }
-        }
+        bestellen(app, ui, Arbeit::Weiter(auftrag, chat.clone(), wohin));
     }
+    wird_aufbereitet(app, ui);
     if let Some(e) = &app.jahresbuch.fehler {
         let farbe = ui.visuals().error_fg_color;
         ui.label(egui::RichText::new(format!("⚠ {e}")).size(10.5).color(farbe));

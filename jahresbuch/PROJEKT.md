@@ -1,7 +1,7 @@
 # Jahresbuch – Projektstand und Übergabe
 
 Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebaut wurde.
-**Neue Session: diese Datei zuerst vollständig lesen.** Stand: 21.11.2026.
+**Neue Session: diese Datei zuerst vollständig lesen.** Stand: 22.11.2026.
 
 ## Wer und wie
 
@@ -32,7 +32,7 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 | Mac `~/DesignCraft-Jahresbuch/target/release/designcraft` | **seine** DesignCraft-Version (das installierte offizielle DesignCraft kann unsere Dateien nicht öffnen) |
 | Mac `~/WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json` | WhatsApp-Export (45.546 Nachrichten, alle Jahre). Medien unter `ausgabe/AppDomainGroup-group.net.whatsapp.WhatsApp.shared/Message/Media/…` (Pfad = `ausgabe/` + `media_base` + `data`); das Hilfsprogramm sucht sie rekursiv im Medienordner `~/WhatsApp-Export/ausgabe` |
 | Mac `~/WhatsApp-Export/.venv` | Python-Umgebung (pillow, emoji, WhatsApp-Chat-Exporter) |
-| Mac `~/Jahresbuch/` | Arbeitsordner, Einstellungen `stil.json` des Jahresbuch-Menüs, Test-Dateien |
+| Mac `~/Jahresbuch/` | Arbeitsordner, Einstellungen `stil.json` des Jahresbuch-Fensters, Test-Dateien |
 | Schriften | Space Grotesk, Fraunces, Work Sans in `~/Library/Fonts` (Google Fonts) |
 
 Git: Remote `origin` = Fork, `upstream` = `storytold/designcraft`. Commits mit dem neutralen Namen „Jahresbuch“ (kein echter Name: das Repository ist öffentlich).
@@ -73,18 +73,19 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
   nicht – sonst ruckelt das Tippen. Export/Druck immer mit Korn.
-- **Menü „Jahresbuch“** (`crates/ui-egui/src/jahresbuch_dialog.rs`), zwei Punkte (User-Wunsch 21.11.2026):
-  **„WhatsApp-Chat einfügen …“** (Export, Medienordner, Zeitraum; Knopf „Chat einfügen“) und
-  **„Chat-Gestaltung …“** (4 Hauptfarben, Chat-Schrift, Regler für Korn/Rauschen/Sprenkel und Abstände,
-  Haken „Vorschau“, OK übernimmt, Abbrechen nimmt zurück; ohne Chat im Dokument speichert OK nur die
-  Einstellungen für den nächsten Chat, Vorschau ausgegraut).
+- **Fenster „Jahresbuch“** (Window › Jahresbuch, `crates/ui-egui/src/jahresbuch/`, siehe unten;
+  es ersetzt das frühere Menü „Jahresbuch“ mit seinen zwei Dialogen).
   Das Einfügen ruft `jahresbuch/designcraft_import.py` auf
   (Python aus `~/WhatsApp-Export/.venv`), führt dessen Skripte im **offenen Buch** aus:
   Einrichtung (Farbfelder, Formate, Mustervorlage **J-Chat**, basiert auf der ersten Mustervorlage
   des Buchs → Seitenzahl kommt vom Buch), dann der Chat in den **markierten leeren Textrahmen**
   (sonst neue Chat-Seite am Ende); passt er nicht, kommen J-Chat-Seiten mit zwei verketteten Spalten
   ans Ende. Vorhandene Farbfelder/Formate werden nicht überschrieben. Einstellungen in `~/Jahresbuch/stil.json`.
-- Ein End-to-End-Test im Dialog-Modul läuft nur mit `JAHRESBUCH_TEST_EXPORT`/`…_MEDIEN`.
+  Einfügen, Fortsetzen und Neu aufbauen sind je **ein** Rückgängig-Schritt; geht unterwegs etwas
+  schief, bleibt das Buch unverändert. Während das Hilfsprogramm arbeitet, steht im Fenster
+  „Chat wird aufbereitet …“ (das Programm reagiert dann kurz nicht).
+- Die End-to-End-Tests des Fensters (`jahresbuch/tests.rs`) laufen nur mit `JAHRESBUCH_TEST_EXPORT`/`…_MEDIEN`
+  (synthetische Testdaten, keine echten Chats).
 
 ### Hilfsprogramm `jahresbuch/designcraft_import.py`
 Baut aus dem Export Befehlsskripte für `designcraft-cli script` bzw. für das Menü. Passt das Layout
@@ -112,8 +113,8 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
   = 6,8/7,2, Hinweis = 7,4/7,2 davon). Emojis (Script-Label „Emoji“) wachsen mit dem Nachrichtentext,
   Datums-Verzierungen („Verzierung“) mit dem Datum, beide samt Anhebung (yOffset). Die Labels setzt
   das Hilfsprogramm erst seit 22.11.2026 – in früher eingefügten Chats wachsen sie nicht mit.
-- **Vorschau** im Jahresbuch-Menü: Haken „Vorschau“ zeigt Farben, Schrift, Korn, Rauschen und
-  Abstände sofort im offenen Dokument; „Gestaltung übernehmen“ macht es fest, Abbrechen nimmt es zurück.
+- Änderungen im **Jahresbuch-Fenster** wirken sofort (ein Regler-Zug = ein Rückgängig-Schritt) und
+  ändern nur, was sich geändert hat: eigene Anpassungen an anderen Formaten und Farbfeldern bleiben.
 - **Blasen:** ihre links hellblau, seine rechts hell-koralle, Schatten in der Gegenfarbe,
   Korn in den Blasen (nicht auf Fotos!), genug Abstand (kein Überlappen), Uhrzeit in der Blase,
   **Rauschen** wie auf der Spalten-Box wahlweise auch auf Blasen und ihren Schatten (Menü: Haken +
@@ -156,8 +157,12 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
 `kalender`, `panel`): Fenster mit Symbol A1 in eigener Spalte ganz links (eingeklappt), Ansichten
 „Neuer Chat“ / „Chat“, einklappbare Abschnitte, Änderungen sofort mit ⌘Z (ein Regler-Zug = ein
 Schritt), ☰ „Neuen Chat einfügen …“, Zeitraum-Kalender, Komma in Zahlenfeldern, mehrere Chats mit
-eigenem Look, „Aussehen wie Chat …“, Personenfarben, Fortsetzen (Hilfsprogramm `--anhaengen`) und
-Neu aufbauen. Die alten Dialoge und das Menü „Jahresbuch“ sind weg (User-Wunsch 22.11.2026); das
+eigenem Look, „Aussehen wie Chat …“, Personenfarben (in Gruppenchats dazu „Akzent“ für Datum,
+Verzierungen und den Schatten der Spalten-Box), Fortsetzen und Neu aufbauen (Hilfsprogramm
+`--ersetzen ANFANG ENDE LÄNGE`). Fortsetzen braucht einen Anfang nach dem Ende des Chats; Neu aufbauen
+setzt nur die Tage des gewählten Zeitraums neu (gefunden an den Datumszeilen, das Jahr über den
+Wochentag), was davor und danach steht, bleibt. Der Chat merkt sich seinen Text im Etikett, damit
+Fortsetzen nicht versehentlich einen kopierten Ausschnitt trifft. Die alten Dialoge und das Menü „Jahresbuch“ sind weg (User-Wunsch 22.11.2026); das
 Fenster öffnet sich über **Window › Jahresbuch** in jedem Arbeitsbereich. Die Befehle
 `jahresbuch.chatImport`/`chatDesign` bleiben für die Automatik (mit Angaben laufen sie direkt). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
 **Noch offen:** Personen umbenennen und zusammenlegen. (Chat-Fotos im Eigenschaften-Fenster: erledigt, siehe oben.)
@@ -203,7 +208,9 @@ Ursprünglicher Plan:
   links, hinten unten rechts; Linienstil wie die übrigen Panel-Symbole). Entwurf-Code:
   `jb_blasen` mit Radius 2,5 auf dem 20×20-Raster; Ansätze der Spitzen beim Einbau glätten.
 - **Personen umbenennen** (gewünscht): im Abschnitt „Personen“ den angezeigten Namen ändern (z. B.
-  ein Spitzname statt Kontaktname) und doppelte Personen zusammenlegen (Nummernwechsel).
+  ein Spitzname statt Kontaktname) und doppelte Personen zusammenlegen (Nummernwechsel). Bis dahin
+  heißen die Personen eines neuen Zweier-Chats „Ich“ und wie der Chat im Export (der früher fest
+  eingebaute Name ist raus: das Repository ist öffentlich); schon eingefügte Chats behalten ihre Namen.
 - Abgelehnt: einzelne Nachrichten weglassen; Bildqualitäts-Prüfung (oft gibt es nichts Besseres).
 - **Chat-Fotos wie andere Bilder:** Anfasser gibt es schon; dazu sollen ihre Maße im normalen
   Eigenschaften-Fenster und in der Steuerleiste stehen und dort änderbar sein (nicht im
@@ -218,8 +225,7 @@ Ursprünglicher Plan:
 
 ## Offen / nächste Schritte
 
-1. **Erster Test des Jahresbuch-Menüs auf dem Mac** (war gerade dran: zwei Spaltenrahmen gezogen,
-   verketten, linken markieren, Menü aufrufen, Zeitraum Nov. 2026).
+1. **Das Jahresbuch-Fenster mit dem echten Buch testen** (nach dem Rundumcheck vom 22.11.2026, siehe unten).
 2. **Doppelklick-App „DesignCraft Jahresbuch“** fürs Dock (statt Start per Terminal).
 3. Noch unbeantwortet: Startet er jedes Jahr mit **neuem leeren Buch** oder einer **Vorlage vom Vorjahr**?
 4. Danach: **Foto-Seiten** (alte Vorlagen: 2 Querformate übereinander · 1 quer oben + 2 hoch unten ·
@@ -234,3 +240,26 @@ Ursprünglicher Plan:
 Eine neue Cloud-Session hat **keine** Chat-Daten. Zum Testen den User um einen kleinen Ausschnitt
 als ZIP bitten (Befehl dafür: November 2026 aus `euer_chat_mit_reaktionen.json` herausschneiden,
 Fotos verkleinern, Videos als Standbild; < 30 MB).
+
+## Rundumcheck 22.11.2026
+
+Zehn Prüfer (fünf Bereiche × zwei Blickwinkel) fanden 81 mögliche Probleme; Gegenprüfer haben die
+wichtigen bestätigt, behoben wurde unter anderem: Fortsetzen erbte die Uhrzeit-Schrift und Handarbeit
+des letzten Absatzes; Neu aufbauen löschte alles außerhalb des Zeitraums; Zahlenfelder trugen einen
+getippten Wert in den nächsten angeklickten Chat; Fortsetzen konnte Tage doppelt einfügen; ein zu
+großer Zeitraum lief nach langem Warten gegen die Grenze von 100.000 Skript-Schritten (jetzt eine
+Meldung vorher); Einfügen war mehrere Rückgängig-Schritte ohne Rückweg; Zeilenumbrüche in
+Bildunterschriften verschoben den Text; Emojis in Namen; neue Gruppenmitglieder; Reaktionen auf
+Fotoserien; ein ausgewähltes Chat-Foto zeigte „Neuer Chat“; Formate des Buchs wie „Datum“ galten als
+Chat; Objekte im Text bremsten bei langen Büchern jede Mausbewegung; Sprenkel brauchten ein
+Vielfaches an Speicher; PowerPoint-Export malte Sprenkel als Flächen; Emoji-Herkunft in `ASSETS.md`.
+
+**Offen (bewusst noch nicht gemacht):**
+- **PDF-Größe:** Die Sprenkel der Spalten-Box liegen zu ~98 % unsichtbar unter der Papierfläche und
+  landen trotzdem im PDF (~5 MB je Chat-Seite). Abhilfe ändert den Aufbau der Spalten-Box –
+  erst mit dem User abstimmen (Varianten zeigen).
+- PDF/X-4 und PDF/A mit Rauschen auf den Blasen (Vorgabe aus): Warnungen bzw. Fehler beim Export.
+- Kleinigkeiten: Neu aufbauen mit kürzerem Zeitraum lässt leere Chat-Seiten am Ende; Pfade von
+  Export und Medienordner eines Chats im Fenster nicht änderbar; Feld für Rauschen im
+  Absatzschattierungs-Dialog; IDML-Export verliert das Chat-Etikett.
+

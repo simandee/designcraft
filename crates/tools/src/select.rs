@@ -1288,6 +1288,13 @@ impl SelectionTool {
     }
 }
 
+/// Is the text holding object `o` what a click at `p` hits (no other object lies over it there)?
+fn on_top(cx: &ToolContext, o: crate::inline::Inline, p: Point) -> bool {
+    let top = |id: ItemId| cx.doc.top_level_of(id).unwrap_or(id);
+    let Some((_, hit)) = cx.hit(p) else { return false };
+    cx.doc.story(o.story).is_some_and(|st| st.frames.iter().any(|f| top(*f) == top(hit)))
+}
+
 /// The object in text that is the selection.
 fn selected_inline(cx: &ToolContext) -> Option<crate::inline::Inline> {
     cx.selection.inline_object().map(|o| crate::inline::Inline { story: o.story, index: o.index })
@@ -1298,11 +1305,7 @@ impl SelectionTool {
     /// the picture while that is selected.
     fn inline_shown(&self, cx: &ToolContext) -> Option<Rect> {
         let o = selected_inline(cx)?;
-        if cx.selection.inline_object().is_some_and(|s| s.content) {
-            crate::inline::content_rect(cx, o)
-        } else {
-            crate::inline::frame_rect(cx, o)
-        }
+        if cx.selection.inline_object().is_some_and(|s| s.content) { crate::inline::content_rect(cx, o) } else { crate::inline::frame_rect(cx, o) }
     }
 
     /// Start dragging the selected object in text.
@@ -1356,18 +1359,25 @@ impl SelectionTool {
                         if let Some(r) = crate::inline::frame_rect(cx, o)
                             && let Some(h) = crate::inline::handle_at(cx, r, p)
                         {
-                            // A picture's frame crops; with Cmd, or an object without a picture, it scales.
-                            let crop = !ev.mods.cmd && crate::inline::content_rect(cx, o).is_some();
+                            // A picture's frame crops; with Cmd, or an object without a picture (or
+                            // turned on the page), it scales.
+                            let crop = !ev.mods.cmd && crate::inline::croppable(cx, o);
                             let how = if crop { InlineDrag::Crop(h) } else { InlineDrag::Scale(h) };
                             self.inline_drag(cx, o, how, p, r)?;
                             return Some(vec![Action::Begin(if crop { "Crop" } else { "Resize" }.into())]);
                         }
                     }
                 }
-                // Shift and Cmd clicks keep their usual meaning (add to the selection, select
-                // through); a plain click picks the object.
-                if !ev.mods.shift && !ev.mods.cmd
+                // Shift, Cmd and Alt clicks keep their usual meaning (add to the selection, select
+                // through, duplicate); a plain click picks the object, unless a handle of the
+                // selected objects is there or another object lies over the text.
+                if !ev.mods.shift
+                    && !ev.mods.cmd
+                    && !ev.mods.alt
+                    && handle_at(cx, p).is_none()
+                    && rotate_zone(cx, p).is_none()
                     && let Some((o, _)) = crate::inline::at(cx, p)
+                    && on_top(cx, o, p)
                 {
                     self.drag = Drag::None;
                     if crate::inline::on_grabber(cx, o, p)
@@ -1393,8 +1403,10 @@ impl SelectionTool {
                     };
                     let (cmd, p) = match how {
                         InlineDrag::Crop(h) => {
-                            let r = inv.transform_rect_bbox(crate::inline::dragged_rect(start, h, p, 0.0));
-                            let r = Rect::new(r.x0, r.y0, r.x1.max(r.x0 + 4.0), r.y1.max(r.y0 + 4.0));
+                            // The dragged side stops 4 pt (a hair more, against rounding) before the
+                            // opposite one, in the object's own size.
+                            let min = 4.01 * place.determinant().abs().sqrt();
+                            let r = inv.transform_rect_bbox(crate::inline::dragged_rect(start, h, p, min));
                             ("anchored.frame", params(json!({"rect": [r.x0, r.y0, r.x1, r.y1]})))
                         }
                         InlineDrag::Scale(h) => ("anchored.resize", params(json!({"width": crate::inline::width_for(start, h, p, width)?}))),

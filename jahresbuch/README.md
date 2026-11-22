@@ -27,14 +27,15 @@ Deine Chats und Fotos liegen **nicht** hier, sondern nur auf deinem Mac.
 1. Dein Buch öffnen.
 2. Einen **leeren Textrahmen** markieren, in dem der Chat beginnen soll (ohne Markierung kommen
    neue Chat-Seiten ans Ende).
-3. Menü **Jahresbuch ▸ WhatsApp-Chat einfließen lassen …**: Export, Medienordner und Zeitraum
-   wählen, Farben, Schrift, Korn und Rauschen einstellen, **Chat einfließen lassen**.
+3. Fenster **Jahresbuch** (Menü **Window ▸ Jahresbuch**): Export, Medienordner, Chat und Zeitraum
+   wählen, **Chat einfügen**.
 
 Der Chat fließt in den Rahmen und durch die damit verketteten Rahmen weiter; passt er nicht,
 kommen Seiten mit der Mustervorlage **J-Chat** (zwei Spalten-Boxen) am Ende dazu. Danach ganz
 normal weiterarbeiten: Seiten dazwischenschieben, Verkettung lösen und neu ansetzen – der Text
-fließt nach. „Nur Gestaltung aufs Dokument anwenden“ ändert Farben, Schrift, Korn und Rauschen
-eines Buchs, das den Chat schon enthält.
+fließt nach. Ist ein Chat markiert (Rahmen, Textcursor oder Chat-Foto), zeigt das Fenster seine
+Gestaltung: Farben, Schrift, Abstände, Korn und Rauschen wirken sofort; **Fortsetzen …** hängt einen
+weiteren Zeitraum an, **Neu aufbauen …** setzt die Tage eines Zeitraums neu.
 
 ## Benutzen (Terminal, eigenes Dokument)
 

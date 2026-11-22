@@ -394,9 +394,10 @@ impl Renderer {
             if let Some(c) = doc.resolve_color(&d.color, d.tint) {
                 ctx.set_transform(m);
                 ctx.set_paint(color_of(&c, 1.0));
-                match &d.path {
-                    Some(p) => ctx.fill_path(p),
-                    None => ctx.fill_rect(&d.rect),
+                match (&d.path, d.speck_path(Some(vis))) {
+                    (Some(p), _) => ctx.fill_path(p),
+                    (None, Some(p)) => ctx.fill_path(&p),
+                    (None, None) => ctx.fill_rect(&d.rect),
                 }
             }
         }
@@ -485,9 +486,10 @@ impl Renderer {
             if let Some(c) = doc.resolve_color(&d.color, d.tint) {
                 ctx.set_transform(m);
                 ctx.set_paint(color_of(&c, 1.0));
-                match &d.path {
-                    Some(p) => ctx.fill_path(p),
-                    None => ctx.fill_rect(&d.rect),
+                match (&d.path, d.speck_path(Some(vis))) {
+                    (Some(p), _) => ctx.fill_path(p),
+                    (None, Some(p)) => ctx.fill_path(&p),
+                    (None, None) => ctx.fill_rect(&d.rect),
                 }
             }
         }

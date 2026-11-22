@@ -126,7 +126,10 @@ fn zweiter_chat_hat_seinen_eigenen_look() {
     let zuordnung: Vec<u32> = st.doc.stories.keys().filter_map(|sid| modell::chat_von_text(&st.doc, *sid)).collect();
     assert!(zuordnung.contains(&1) && zuordnung.contains(&2), "beide Texte gehören zu ihrem Chat: {zuordnung:?}");
     let chats = modell::chats(&st.doc, &Default::default());
-    assert_eq!(chats.iter().find(|c| c.nummer == 2).and_then(|c| c.personen.iter().find(|p| p.key == "Ich")).map(|p| p.farbe.as_str()), Some("#00AA00"));
+    assert_eq!(
+        chats.iter().find(|c| c.nummer == 2).and_then(|c| c.personen.iter().find(|p| p.key == "Ich")).map(|p| p.farbe.as_str()),
+        Some("#00AA00")
+    );
 }
 
 /// Schriftgrößen: die Formate ändern sich, Emojis wachsen mit dem Nachrichtentext und die
@@ -142,7 +145,8 @@ fn schriftgroessen_skalieren_emojis_und_verzierungen() {
     };
     let (emoji0, deko0) = (hoehen(&app, "Emoji"), hoehen(&app, "Verzierung"));
     assert!(!emoji0.is_empty() && !deko0.is_empty(), "der Test-Chat hat Emojis und Datumszeilen");
-    let (text0, datum0) = (absatzformat(&app, "Chat Sie").and_then(|s| s.chars.size).unwrap(), absatzformat(&app, "Datum").and_then(|s| s.chars.size).unwrap());
+    let (text0, datum0) =
+        (absatzformat(&app, "Chat Sie").and_then(|s| s.chars.size).unwrap(), absatzformat(&app, "Datum").and_then(|s| s.chars.size).unwrap());
     super::befehl_gestalten(&mut app, &json!({"chat": 1, "stil": {"schrift": {"text": text0 * 1.5, "datum": datum0 * 1.5}}})).unwrap();
     let verhaeltnis = |vorher: &[f64], nachher: &[f64]| nachher.iter().zip(vorher).map(|(n, v)| n / v).collect::<Vec<_>>();
     for f in verhaeltnis(&emoji0, &hoehen(&app, "Emoji")) {
@@ -154,7 +158,9 @@ fn schriftgroessen_skalieren_emojis_und_verzierungen() {
 }
 
 /// Fortsetzen hängt den neuen Zeitraum hinten an: der Text davor bleibt Zeichen für Zeichen, das
-/// Ende im Etikett rückt weiter. Neu aufbauen ersetzt den Text durch den gewählten Zeitraum.
+/// Ende im Etikett rückt weiter, und der angehängte Text erbt weder das Zeichenformat am Ende (die
+/// Uhrzeit) noch die Handarbeit am letzten Absatz. Neu aufbauen setzt nur die Tage des gewählten
+/// Zeitraums neu: eine Änderung darin verschwindet, eine dahinter bleibt.
 #[test]
 fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
     let Some((export, medien)) = export() else { return };
@@ -166,7 +172,14 @@ fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
         *doc.stories.keys().find(|sid| modell::chat_von_text(doc, **sid) == Some(chat.nummer)).unwrap()
     };
     let text = |app: &DesignApp| app.session.active().unwrap().doc.story(story).unwrap().text.clone();
+    let einfuegen_bei = |app: &mut DesignApp, pos: usize, t: &str| {
+        app.run("text.select", json!({"story": story.0, "anchor": pos, "focus": pos})).unwrap();
+        app.run("text.insert", json!({"text": t})).unwrap();
+    };
     let vorher = text(&app);
+    // Handarbeit am letzten Absatz: ein Einzug.
+    app.run("text.select", json!({"story": story.0, "anchor": vorher.len(), "focus": vorher.len()})).unwrap();
+    app.run("type.para", json!({"attrs": {"leftIndent": 40}})).unwrap();
     let auftrag = |von: &str, bis: &str| super::einfuegen::Auftrag {
         export: export.clone(),
         medien: medien.clone(),
@@ -179,8 +192,30 @@ fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
     super::einfuegen::fortsetzen(&mut app, &auftrag("2026-11-11", "2026-11-30"), &chat, super::einfuegen::Wohin::Anhaengen(story.0)).unwrap();
     let nachher = text(&app);
     assert!(nachher.starts_with(&vorher) && nachher.len() > vorher.len(), "der neue Zeitraum kommt hinten dazu");
+    {
+        let st = app.session.active().unwrap().doc.story(story).unwrap();
+        let zeit_am_anfang = |r: &std::ops::Range<usize>| st.format_after(r.start).style == "Zeit";
+        let (alt, neu): (Vec<_>, Vec<_>) =
+            st.para_ranges().into_iter().enumerate().filter(|(_, r)| !r.is_empty()).partition(|(_, r)| r.start < vorher.len());
+        assert!(!neu.is_empty());
+        assert_eq!(
+            neu.iter().any(|(_, r)| zeit_am_anfang(r)),
+            alt.iter().any(|(_, r)| zeit_am_anfang(r)),
+            "angehängte Absätze beginnen wie die ersten, nicht in der Uhrzeit"
+        );
+        assert!(neu.iter().all(|(pi, _)| st.paras[*pi].para.left_indent != Some(40.0)), "der Einzug des letzten Absatzes wandert nicht mit");
+    }
     let gespeichert = modell::chats(&app.session.active().unwrap().doc, &Default::default());
     assert_eq!(gespeichert[0].bis, "2026-11-30");
-    super::einfuegen::fortsetzen(&mut app, &auftrag("2026-11-01", "2026-11-10"), &gespeichert[0], super::einfuegen::Wohin::Ersetzen(story.0)).unwrap();
-    assert_eq!(text(&app), vorher, "neu aufgebaut: wieder nur der erste Zeitraum");
+    // Eine Änderung im ersten Zeitraum und eine im angehängten.
+    einfuegen_bei(&mut app, nachher.len(), " DAHINTER");
+    let zweiter_absatz = nachher.find('\n').unwrap() + 1;
+    einfuegen_bei(&mut app, zweiter_absatz, "DARIN ");
+    super::einfuegen::fortsetzen(&mut app, &auftrag("2026-11-01", "2026-11-10"), &gespeichert[0], super::einfuegen::Wohin::Ersetzen(story.0))
+        .unwrap();
+    let neu_aufgebaut = text(&app);
+    assert!(!neu_aufgebaut.contains("DARIN") && neu_aufgebaut.contains(" DAHINTER"), "nur der gewählte Zeitraum ist neu gesetzt");
+    assert_eq!(neu_aufgebaut.replace(" DAHINTER", ""), nachher, "der Zeitraum steht wieder wie eingefügt, der Rest bleibt");
+    let gespeichert = modell::chats(&app.session.active().unwrap().doc, &Default::default());
+    assert_eq!((gespeichert[0].von.as_str(), gespeichert[0].bis.as_str()), ("2026-11-01", "2026-11-30"), "der Chat umfasst weiter beide Zeiträume");
 }

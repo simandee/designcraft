@@ -277,16 +277,17 @@ impl Exporter<'_> {
         self.as_artifact(s, |me, s| {
             for d in ft.decos.iter().filter(|d| !d.nonprinting && !d.over_text) {
                 if let Some(g) = d.grain {
-                    crate::export::draw_grain(s, d, g);
+                    me.grain(s, d, g);
                     continue;
                 }
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }
                 if let Some(c) = me.swatch_color(&d.color, d.tint) {
-                    match &d.path {
-                        Some(p) => me.fill_path(s, p, c),
-                        None => me.fill_rect(s, d.rect, c),
+                    match (&d.path, d.speck_path(None)) {
+                        (Some(p), _) => me.fill_path(s, p, c),
+                        (None, Some(p)) => me.fill_path(s, &p, c),
+                        (None, None) => me.fill_rect(s, d.rect, c),
                     }
                 }
             }
@@ -322,10 +323,14 @@ impl Exporter<'_> {
         self.as_artifact(s, |me, s| {
             // Decorations set to lie over the text (shading specks over text).
             for d in ft.decos.iter().filter(|d| !d.nonprinting && d.over_text) {
+                if d.overprint {
+                    me.warn("overprint is not exported yet");
+                }
                 if let Some(c) = me.swatch_color(&d.color, d.tint) {
-                    match &d.path {
-                        Some(p) => me.fill_path(s, p, c),
-                        None => me.fill_rect(s, d.rect, c),
+                    match (&d.path, d.speck_path(None)) {
+                        (Some(p), _) => me.fill_path(s, p, c),
+                        (None, Some(p)) => me.fill_path(s, &p, c),
+                        (None, None) => me.fill_rect(s, d.rect, c),
                     }
                 }
             }

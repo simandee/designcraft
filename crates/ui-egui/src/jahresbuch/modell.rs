@@ -43,6 +43,10 @@ pub struct Chat {
     pub bis: String,
     #[serde(default)]
     pub personen: Vec<Person>,
+    /// Der Text des Chats im Buch (Fortsetzen und Neu aufbauen wirken auf ihn, auch wenn gerade
+    /// ein kopierter Ausschnitt markiert ist). Fehlt bei Chats von vor dieser Angabe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub story: Option<u64>,
     /// Die Gestaltung, mit denselben Schlüsseln wie `stil.json` des Hilfsprogramms.
     #[serde(default)]
     pub stil: Map<String, Value>,
@@ -159,10 +163,10 @@ pub fn speichern(chats: &[Chat]) -> Value {
 pub fn chat_von_text(doc: &Document, sid: StoryId) -> Option<u32> {
     let st = doc.story(sid)?;
     for p in &st.paras {
+        // Ab dem zweiten Chat ist jedes Format mit Kürzel „Chat N/“ eindeutig seins.
         if let Some(rest) = p.style.strip_prefix("Chat ")
-            && let Some((n, name)) = rest.split_once('/')
+            && let Some((n, _)) = rest.split_once('/')
             && let Ok(n) = n.parse::<u32>()
-            && chat_format(name)
         {
             return Some(n);
         }
@@ -173,15 +177,36 @@ pub fn chat_von_text(doc: &Document, sid: StoryId) -> Option<u32> {
     None
 }
 
-/// Ein Absatzformat, das nur in Chats vorkommt (ohne Kürzel).
+/// Ein Absatzformat, wie es nur das Hilfsprogramm für Chats anlegt (ohne Kürzel): eine Art
+/// („Chat“, „Bild“, „Album“ …) und eine Person („Ich“, „Sie“, „Person 2“), etwa „Chat Sie“ oder
+/// „Album Ich 3 Ende“. Formate des Buchs wie „Datum“ oder „Bild Unterschrift“ zählen nicht.
 fn chat_format(name: &str) -> bool {
-    ["Chat ", "Bild ", "Album ", "Emoji ", "Sticker ", "Reaktion "].iter().any(|p| name.starts_with(p)) || name == "Datum"
+    let person = |rest: &str| {
+        ["Ich", "Sie"].iter().any(|p| rest.strip_prefix(p).is_some_and(|r| r.is_empty() || r.starts_with(' '))) || rest.starts_with("Person ")
+    };
+    ["Chat ", "Bild ", "Album ", "Emoji ", "Sticker ", "Reaktion "].iter().any(|p| name.strip_prefix(p).is_some_and(person))
+}
+
+/// Ob der erste Chat seine Namen ohne Kürzel tragen kann: nicht, wenn das Buch schon eigene
+/// Formate oder Farbfelder mit solchen allgemeinen Namen hat (etwa ein Absatzformat „Datum“) –
+/// sonst würde der Chat sie übernehmen und seine Gestaltung sie ändern.
+pub fn namen_ohne_kuerzel_frei(doc: &Document) -> bool {
+    const FORMATE: [&str; 5] = ["Datum", "Zeit", "Link", "Hinweis", "Zitat Text"];
+    const FARBFELDER: [&str; 2] = ["Papier", "Textfarbe"];
+    let formate = doc.styles.paragraph.iter().map(|s| s.name.as_str()).chain(doc.styles.character.iter().map(|s| s.name.as_str()));
+    !formate.into_iter().any(|n| FORMATE.contains(&n)) && !doc.swatches.iter().any(|s| FARBFELDER.contains(&s.name.as_str()))
+}
+
+/// Der Text, auf den Fortsetzen und Neu aufbauen von `chat` wirken: der im Etikett vermerkte,
+/// solange er noch zu ihm gehört, sonst `markiert` (der markierte Text des Chats).
+pub fn text_des_chats(doc: &Document, chat: &Chat, markiert: Option<StoryId>) -> Option<StoryId> {
+    chat.story.map(StoryId).filter(|sid| chat_von_text(doc, *sid) == Some(chat.nummer)).or(markiert)
 }
 
 /// Der markierte Chat: ein markierter Textrahmen, der Textcursor oder ein ausgewähltes Objekt im
-/// Text eines Chats. (Nummer, Text)
+/// Text eines Chats (etwa ein Chat-Foto). (Nummer, Text)
 pub fn markierter_chat(doc: &Document, sel: &designcraft_doc::Selection) -> Option<(u32, StoryId)> {
-    let mut kandidaten: Vec<StoryId> = sel.text.iter().map(|t| t.story).collect();
+    let mut kandidaten: Vec<StoryId> = sel.text.iter().map(|t| t.story).chain(sel.inline_object().map(|i| i.story)).collect();
     for id in &sel.items {
         if let Some(tf) = doc.item(*id).and_then(|i| i.text_frame()) {
             kandidaten.push(tf.story);
@@ -211,12 +236,24 @@ mod tests {
         assert_eq!(zwei.vorlage(), "J2-Chat");
         let mut doc = Document::new(&designcraft_doc::build::NewDocument::default());
         let lid = doc.default_layer();
-        let (_, a) = doc.add_text_frame(designcraft_doc::SpreadRef::Doc(0), designcraft_geom::Rect::new(0.0, 0.0, 100.0, 100.0), lid, "x", Default::default()).unwrap();
-        let (_, b) = doc.add_text_frame(designcraft_doc::SpreadRef::Doc(0), designcraft_geom::Rect::new(0.0, 200.0, 100.0, 300.0), lid, "y", Default::default()).unwrap();
+        let (_, a) = doc
+            .add_text_frame(designcraft_doc::SpreadRef::Doc(0), designcraft_geom::Rect::new(0.0, 0.0, 100.0, 100.0), lid, "x", Default::default())
+            .unwrap();
+        let (_, b) = doc
+            .add_text_frame(designcraft_doc::SpreadRef::Doc(0), designcraft_geom::Rect::new(0.0, 200.0, 100.0, 300.0), lid, "y", Default::default())
+            .unwrap();
         assert_eq!(chat_von_text(&doc, a), None, "gewöhnlicher Text ist kein Chat");
+        doc.story_mut(a).unwrap().paras[0].style = "Datum".into();
+        assert_eq!(chat_von_text(&doc, a), None, "ein Format „Datum“ des Buchs macht noch keinen Chat");
+        doc.story_mut(a).unwrap().paras[0].style = "Bild Unterschrift".into();
+        assert_eq!(chat_von_text(&doc, a), None);
         doc.story_mut(a).unwrap().paras[0].style = "Chat Ich".into();
         doc.story_mut(b).unwrap().paras[0].style = "Chat 3/Datum".into();
         assert_eq!(chat_von_text(&doc, a), Some(1));
         assert_eq!(chat_von_text(&doc, b), Some(3));
+        // Ein ausgewähltes Chat-Foto (ein Objekt im Text) markiert seinen Chat.
+        let foto =
+            designcraft_doc::Selection { inline: Some(designcraft_doc::InlineSel { story: b, index: 0, content: false }), ..Default::default() };
+        assert_eq!(markierter_chat(&doc, &foto), Some((3, b)));
     }
 }

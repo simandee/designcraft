@@ -6783,7 +6783,13 @@ fn para_color_tint(
                 para_set(d, tint_key, json!(if v.is_finite() { (v / 100.0).clamp(0.0, 1.0) } else { 1.0 }));
             }
             ui.add_space(8.0);
-            para_check(ui, d, pv, overprint_key, crate::i18n::tr(lang, "Overprint"));
+            // The shadow's and the specks' own Overprint say whose they are (the page has three).
+            let overprint = match overprint_key {
+                "shadingShadowOverprint" => "Overprint Shadow",
+                "shadingSpeckleOverprint" => "Overprint Specks",
+                _ => "Overprint",
+            };
+            para_check(ui, d, pv, overprint_key, crate::i18n::tr(lang, overprint));
         });
     });
     ui.end_row();

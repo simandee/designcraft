@@ -25,7 +25,7 @@ const ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "ui-egui/src/jahresbuch/einfuegen.rs",
-        "Jahresbuch (this fork): the WhatsApp export the user chose, and a temporary work folder for the helper program's scripts, removed afterwards",
+        "Jahresbuch (this fork): the WhatsApp export and media folder the user (or an automation client) chose, and a temporary work folder for the helper program's scripts, removed afterwards",
     ),
     ("ui-egui/src/jahresbuch/panel.rs", "Jahresbuch (this fork): whether the WhatsApp export the user chose exists, before reading it"),
     ("engine/src/io.rs", "the checked gateway: every read and write a command makes"),

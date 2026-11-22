@@ -346,6 +346,8 @@ pub fn specs() -> Vec<CommandSpec> {
             }
             st.selection.text = None;
             st.selection.cells = None;
+            // An object in text selected before stays out: it would come back once the items go.
+            st.selection.inline = None;
             st.bump_revision();
             ok()
         }),
@@ -354,6 +356,7 @@ pub fn specs() -> Vec<CommandSpec> {
             let st = s.doc_mut()?;
             st.selection.text = None;
             st.selection.cells = None;
+            st.selection.inline = None;
             if let Some(i) = st.selection.items.iter().position(|x| *x == id) {
                 st.selection.items.remove(i);
                 // Its points go with it: arrow keys and Delete act on the selected points.
@@ -422,6 +425,10 @@ pub fn specs() -> Vec<CommandSpec> {
             |s, p| {
                 if s.doc()?.selection.text.is_some() && p.get("ids").is_none() {
                     return super::text::delete_selection(s);
+                }
+                // An object in text selected (a picture in a line): it goes, as with the Delete key.
+                if p.get("ids").is_none() && s.doc()?.selection.inline_object().is_some() {
+                    return s.execute("anchored.delete", &json!({}));
                 }
                 if p.get("ids").is_none() && s.doc()?.selection.items.is_empty() && !s.doc()?.selection.guides.is_empty() {
                     return s.execute("guide.delete", &json!({}));

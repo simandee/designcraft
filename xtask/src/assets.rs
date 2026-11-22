@@ -46,9 +46,12 @@ pub fn is_asset(path: &str) -> bool {
     ASSET_DIRS.iter().any(|d| path.starts_with(d)) || ASSET_EXT.contains(&ext.as_str())
 }
 
-/// Paths that need an ASSETS.md entry but lack one.
+/// Paths that need an ASSETS.md entry but lack one. A table row whose first cell is a directory
+/// (`` | `dir/` | … ``) covers every file below it, for large sets under one licence.
 pub fn missing(files: &[String], assets_md: &str) -> Vec<String> {
-    files.iter().filter(|f| is_asset(f) && !assets_md.contains(&format!("`{f}`"))).cloned().collect()
+    let dirs: Vec<&str> =
+        assets_md.lines().filter_map(|l| l.strip_prefix("| `")?.split_once('`').map(|(p, _)| p)).filter(|p| p.ends_with('/')).collect();
+    files.iter().filter(|f| is_asset(f) && !assets_md.contains(&format!("`{f}`")) && !dirs.iter().any(|d| f.starts_with(d))).cloned().collect()
 }
 
 pub fn run(root: &Path) -> Result<(), String> {
@@ -71,6 +74,14 @@ pub fn run(root: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A directory row covers the files below it, and only those; a directory named in prose does not.
+    #[test]
+    fn a_directory_row_covers_the_files_below_it() {
+        let files = vec!["emoji/svg/1F600.svg".to_string(), "emoji/svg/1F601.svg".into(), "emojis.svg".into(), "docs/brand/logo.svg".into()];
+        let md = "Brand files live in `docs/brand/`.\n| `emoji/` | OpenMoji | openmoji.org | CC BY-SA 4.0 |";
+        assert_eq!(missing(&files, md), vec!["emojis.svg".to_string(), "docs/brand/logo.svg".into()]);
+    }
 
     #[test]
     fn detects_unattributed_assets() {

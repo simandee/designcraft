@@ -159,8 +159,12 @@ fn anchored(ex: &mut Exporter, tfr: &TextFrame, ft: &FrameText, xf: Affine, opac
 
 /// Paragraph shading and rules.
 fn decos(ex: &mut Exporter, ft: &FrameText, m: Affine, opacity: f32) {
-    // Paper grain is a texture, not a colour: PowerPoint shapes leave it out.
-    for d in ft.decos.iter().filter(|d| d.grain.is_none()) {
+    // Specks and paper grain are many dots and a texture, not a box: as a rectangle they would
+    // cover the shading in the speck colour, so PowerPoint gets neither (and is told so).
+    if ft.decos.iter().any(|d| d.speckle) {
+        ex.warn("Paragraph shading specks and paper grain are not exported to PowerPoint");
+    }
+    for d in ft.decos.iter().filter(|d| !d.speckle) {
         let Some(color) = ex.model_color(&d.color, d.tint, opacity) else { continue };
         if let Some((xfrm, _)) = box_of(d.rect, m) {
             ex.rect_shape(xfrm, craft_pptx::Fill::solid(color), "Paragraph Shading");

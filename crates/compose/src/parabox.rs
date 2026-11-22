@@ -199,7 +199,15 @@ fn shading_deco(s: &Shading, part: &Part<'_>, frames: &[FrameSpec], first_part: 
         // Corners stay square where the box is cut by a split.
         let corners = cut_corners(s.corners, !first_part, !last_part);
         let path = (!corners.iter().all(Corner::is_none)).then(|| box_outline(rect, &corners, [true; 4]));
-        return Some(Deco { rect, color: s.color.clone(), tint: s.tint, path, nonprinting: s.nonprinting, overprint: s.overprint, over_text: false, speckle: false, grain: None });
+        return Some(Deco {
+            rect,
+            color: s.color.clone(),
+            tint: s.tint,
+            path,
+            nonprinting: s.nonprinting,
+            overprint: s.overprint,
+            ..Deco::default()
+        });
     }
     None
 }
@@ -215,20 +223,22 @@ fn shadow_deco(sh: &Shadow, shading: &Deco, nonprinting: bool) -> Deco {
         path: shading.path.as_ref().map(|p| shift * p.clone()),
         nonprinting,
         overprint: sh.overprint,
-        over_text: false,
-        speckle: false,
-        grain: None,
+        ..Deco::default()
     }
 }
 
 /// Grid step of the specks (points): one possible speck per cell.
 const SPECK_STEP: f64 = 1.5;
-/// Most specks drawn over one box (a huge box keeps a bounded path).
+/// Most specks over one box: a bigger box gets sparser specks, evenly, instead of more.
 const MAX_SPECKS: usize = 80_000;
+/// Most grid cells looked at for one box (about 3,000 pt square); a bigger box gets no specks
+/// rather than a long loop.
+const MAX_SPECK_CELLS: f64 = 4.0e6;
 
 /// A stable pseudo-random number in 0..1 for grid cell (`ix`, `iy`) and channel `k`.
 fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
-    let mut h = (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (iy as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ k.wrapping_mul(0x1656_67B1_9E37_79F9);
+    let mut h =
+        (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (iy as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ k.wrapping_mul(0x1656_67B1_9E37_79F9);
     h ^= h >> 33;
     h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
     h ^= h >> 33;
@@ -240,45 +250,45 @@ fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
 /// around it does.
 fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
     let rect = under.rect;
+    let cells = (rect.width() / SPECK_STEP + 1.0) * (rect.height() / SPECK_STEP + 1.0);
+    if !(cells <= MAX_SPECK_CELLS) {
+        return None;
+    }
     let outline = under.path.clone().unwrap_or_else(|| rect.to_path(TOL));
-    let mut path = BezPath::new();
-    let mut count = 0;
+    let mut dots: Vec<[f32; 3]> = Vec::new();
     let (x0, y0) = ((rect.x0 / SPECK_STEP).floor() as i64, (rect.y0 / SPECK_STEP).floor() as i64);
     let (x1, y1) = ((rect.x1 / SPECK_STEP).ceil() as i64, (rect.y1 / SPECK_STEP).ceil() as i64);
     // Up to a third of the cells at full amount: beyond that the specks read as a tint.
-    let chance = sp.amount * 0.33;
+    let chance = (sp.amount * 0.33).min(MAX_SPECKS as f64 / cells);
     'rows: for iy in y0..y1 {
         for ix in x0..x1 {
             if speck_noise(ix, iy, 0) >= chance {
                 continue;
             }
-            let c = kurbo::Point::new(
-                (ix as f64 + speck_noise(ix, iy, 1)) * SPECK_STEP,
-                (iy as f64 + speck_noise(ix, iy, 2)) * SPECK_STEP,
-            );
+            let c = kurbo::Point::new((ix as f64 + speck_noise(ix, iy, 1)) * SPECK_STEP, (iy as f64 + speck_noise(ix, iy, 2)) * SPECK_STEP);
             // Mostly fine dust, now and then a bigger fleck.
             let size = speck_noise(ix, iy, 3);
             let r = if size > 0.93 { 0.45 + size * 0.35 } else { 0.12 + size * 0.28 };
-            if !outline.contains(c) || !rect.inset(-0.0).contains(c) {
+            if !rect.contains(c) || !outline.contains(c) {
                 continue;
             }
-            path.extend(kurbo::Circle::new(c, r).path_elements(0.05));
-            count += 1;
-            if count >= MAX_SPECKS {
+            dots.push([c.x as f32, c.y as f32, r as f32]);
+            if dots.len() >= MAX_SPECKS {
                 break 'rows;
             }
         }
     }
-    (count > 0).then(|| Deco {
+    (!dots.is_empty()).then(|| Deco {
         rect,
         color: sp.color.clone(),
         tint: sp.tint,
-        path: Some(path),
+        path: None,
         nonprinting: under.nonprinting,
         overprint: sp.overprint,
         over_text: sp.over_text,
         speckle: true,
         grain: None,
+        dots: Some(dots.into()),
     })
 }
 
@@ -299,6 +309,7 @@ fn grain_deco(amount: f64, light: bool, under: &Deco) -> Deco {
         over_text: false,
         speckle: true,
         grain: Some(crate::Grain { light, opacity: opacity as f32 }),
+        dots: None,
     }
 }
 
@@ -312,12 +323,14 @@ fn border_decos(bd: &Border, part: &Part<'_>, first_part: bool, last_part: bool,
     for (path, gap) in border_paths(bd, o, open_top, open_bottom) {
         let (color, tint, overprint) =
             if gap { (bd.gap_color.clone(), bd.gap_tint, bd.gap_overprint) } else { (bd.color.clone(), bd.tint, bd.overprint) };
-        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), nonprinting: false, overprint, over_text: false, speckle: false, grain: None }));
+        decos.push((part.fi, false, Deco { rect: path.bounding_box(), color, tint, path: Some(path), overprint, ..Deco::default() }));
     }
     if is_plain(bd, open_top, open_bottom) {
-        decos.extend(plain_edges(bd, o, open_top, open_bottom).into_iter().map(|rect| {
-            (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, path: None, nonprinting: false, overprint: bd.overprint, over_text: false, speckle: false, grain: None })
-        }));
+        decos.extend(
+            plain_edges(bd, o, open_top, open_bottom)
+                .into_iter()
+                .map(|rect| (part.fi, false, Deco { rect, color: bd.color.clone(), tint: bd.tint, overprint: bd.overprint, ..Deco::default() })),
+        );
     }
 }
 
@@ -661,6 +674,21 @@ mod dotted_tests {
         let op = |d: &Deco| d.grain.map(|g| g.opacity).unwrap_or(0.0);
         assert!(op(&strong) > op(&weak), "stronger with the amount");
         assert!(!strong.grain.unwrap().light && grain_deco(0.5, true, &under).grain.unwrap().light);
+    }
+
+    /// Specks stay inside the box, and a box too big for every cell to get its speck gets sparser
+    /// specks all the way down instead of stopping part way.
+    #[test]
+    fn specks_cover_a_big_box_evenly_and_stay_inside() {
+        let rect = Rect::new(0.0, 0.0, 600.0, 900.0);
+        let under = Deco { rect, color: "[Black]".into(), tint: 1.0, ..Default::default() };
+        let sp = Speckle { amount: 1.0, color: "[Paper]".into(), tint: 1.0, over_text: false, overprint: false };
+        let dots = speckle_deco(&sp, &under).and_then(|d| d.dots).unwrap();
+        assert!(dots.len() <= MAX_SPECKS);
+        assert!(dots.iter().all(|&[x, y, _]| rect.contains(kurbo::Point::new(f64::from(x), f64::from(y)))), "inside the box");
+        assert!(dots.iter().any(|d| f64::from(d[1]) > rect.y1 - 50.0), "specks reach the bottom of the box");
+        let huge = Deco { rect: Rect::new(0.0, 0.0, 1.0e6, 1.0e6), ..under };
+        assert!(speckle_deco(&sp, &huge).is_none(), "a huge box gets no specks rather than a long loop");
     }
 
     /// The tile is noise: varied, and dark grain centred on half ink while light grain is mostly

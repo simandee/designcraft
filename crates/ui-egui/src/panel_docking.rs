@@ -52,9 +52,7 @@ pub(crate) fn cancel_gesture(ctx: &egui::Context) {
 }
 
 fn normalize(raw: &str) -> Option<&'static str> {
-    crate::dock::panels()
-        .find(|(id, label, _)| id.eq_ignore_ascii_case(raw.trim()) || label.eq_ignore_ascii_case(raw.trim()))
-        .map(|(id, _, _)| *id)
+    crate::dock::panels().find(|(id, label, _)| id.eq_ignore_ascii_case(raw.trim()) || label.eq_ignore_ascii_case(raw.trim())).map(|(id, _, _)| *id)
 }
 
 /// The panel that holds the document area. It never moves, floats, closes or takes tabs.
@@ -198,7 +196,8 @@ pub(crate) fn default_layout(ui: &crate::UiState) -> Layout<String> {
     }
     // The panels of their own column (Jahresbuch) go innermost (leftmost), apart from the
     // program's panel families; a workspace with named icon groups shows only those.
-    let own: Vec<String> = crate::dock::OWN_COLUMN_PANELS.iter().filter_map(|p| ui.icon_groups.is_none().then(|| placed.take(p.0)).flatten()).collect();
+    let own: Vec<String> =
+        crate::dock::OWN_COLUMN_PANELS.iter().filter_map(|p| ui.icon_groups.is_none().then(|| placed.take(p.0)).flatten()).collect();
     columns.extend(icon_column(ui.icon_groups.as_deref(), &mut placed));
     if !own.is_empty() {
         let groups = own.into_iter().map(|id| Group::new(vec![id], 0)).collect();
@@ -677,8 +676,7 @@ fn float_space(app: &DesignApp) -> FloatSpace<String> {
         Some(ctx) => craft_ui::docking::float_space::<String>(ctx, area_id()).unwrap_or_else(|| FloatSpace::new(float_bounds(app, ctx))),
         None => FloatSpace::new(HEADLESS_AREA),
     };
-    crate::dock::panels()
-        .fold(space, |space, (id, _, _)| space.with_panel_size((*id).to_owned(), floating_size(id)))
+    crate::dock::panels().fold(space, |space, (id, _, _)| space.with_panel_size((*id).to_owned(), floating_size(id)))
 }
 
 /// A change to the layout in use, committed only when every step succeeded.
