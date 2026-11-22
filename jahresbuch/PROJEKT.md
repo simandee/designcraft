@@ -180,9 +180,22 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
   Zahlenfelder sollen **„8,4“ mit Komma** verstehen (DesignCraft kann bisher nur Punkt → in
   `widgets.rs` NumKind::parse ergänzen, mit Test). Platz: eigene **dritte Spalte links** im Dock,
   anfangs **eingeklappt** (nur Symbol); der User dockt es selbst um. Eigenes Symbol zeichnen.
+- **Symbol:** Variante **A1** (zwei Sprechblasen, leicht gerundete Ecken, Schwänzchen vorne unten
+  links, hinten unten rechts; Linienstil wie die übrigen Panel-Symbole). Entwurf-Code:
+  `jb_blasen` mit Radius 2,5 auf dem 20×20-Raster; Ansätze der Spitzen beim Einbau glätten.
+- **Personen umbenennen** (gewünscht): im Abschnitt „Personen“ den angezeigten Namen ändern (z. B.
+  ein Spitzname statt Kontaktname) und doppelte Personen zusammenlegen (Nummernwechsel).
+- Abgelehnt: einzelne Nachrichten weglassen; Bildqualitäts-Prüfung (oft gibt es nichts Besseres).
 - **Chat-Fotos wie andere Bilder:** Anfasser gibt es schon; dazu sollen ihre Maße im normalen
   Eigenschaften-Fenster und in der Steuerleiste stehen und dort änderbar sein (nicht im
   Jahresbuch-Fenster).
+
+## Gemerkt für später (dem User von sich aus wieder vorschlagen)
+
+- **Haken pro Art, was ins Buch kommt** (Fotos, Videos, Sprachnachrichten, Sticker, Links,
+  „Nachricht gelöscht“): wieder vorschlagen, wenn der User nach Neuerungen fragt.
+- **Chat-Statistik als Spaß-Seite** (Nachrichten je Person, häufigste Emojis, aktivster Tag): der
+  User will daran **erinnert** werden – nach dem Jahresbuch-Fenster von sich aus ansprechen.
 
 ## Offen / nächste Schritte
 
