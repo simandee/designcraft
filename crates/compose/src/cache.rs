@@ -244,6 +244,13 @@ impl Cache {
             (name, &section_marker).hash(&mut h);
             sig.push(h.finish() as usize);
         }
+        if story.text.contains(designcraft_doc::story::PAGE_NUMBER) {
+            // Layered page numbers follow the designs saved in the document label.
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            doc.labels.get(designcraft_doc::pagenum::LABEL).hash(&mut h);
+            sig.push(h.finish() as usize);
+        }
         if story.text.contains(designcraft_doc::story::SECTION_MARKER) {
             // Frames on document pages show their section's marker text.
             use std::hash::{Hash, Hasher};

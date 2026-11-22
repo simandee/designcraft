@@ -22,6 +22,7 @@ mod notes;
 pub mod optical;
 mod outline;
 mod overlay;
+pub mod pagenum;
 mod parabox;
 mod placed;
 mod reuse;
@@ -282,6 +283,10 @@ pub struct Deco {
     pub speckle: bool,
     /// Paper grain instead of a colour fill, inside `path` (shading noise).
     pub grain: Option<Grain>,
+    /// A colour of its own instead of the swatch `color` (layered page numbers' mixed colours).
+    pub value: Option<designcraft_color::Color>,
+    /// Part of a layered page number ([`pagenum`]).
+    pub page_number: bool,
 }
 
 /// Paper grain: a fine noise texture, as a printed paper has. Dark grain is black multiplied over
@@ -3724,7 +3729,7 @@ fn compose_run(
         pi += 1;
     }
     pass.trace(reuse::plain_end(&span_paras, &split_paras, &boxes), &snaps, info).map(|trace| {
-        let out = finish_composition(FinishInput {
+        let mut out = finish_composition(FinishInput {
             doc,
             story,
             frames,
@@ -3737,6 +3742,7 @@ fn compose_run(
             grid_paras: &grid_paras,
             styles_tab,
         });
+        pagenum::apply(doc, story, &mut out, db);
         (out, trace)
     })
 }
