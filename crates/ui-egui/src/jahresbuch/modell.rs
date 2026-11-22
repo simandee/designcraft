@@ -153,6 +153,12 @@ pub fn chats(doc: &Document, vorgabe: &Map<String, Value>) -> Vec<Chat> {
     out
 }
 
+/// Steht Chat `nummer` im Etikett des Dokuments? (Sonst ist er von vor dem Etikett, und das
+/// Fenster kennt ihn nur aus den Vorgaben.)
+pub fn im_etikett(doc: &Document, nummer: u32) -> bool {
+    doc.labels.get(ETIKETT).and_then(|t| serde_json::from_str::<Vec<Chat>>(t).ok()).is_some_and(|c| c.iter().any(|c| c.nummer == nummer))
+}
+
 /// Der Befehl, der `chats` im Dokument speichert.
 pub fn speichern(chats: &[Chat]) -> Value {
     json!({"command": "document.setLabel", "params": {"key": ETIKETT, "value": serde_json::to_string(chats).unwrap_or_default()}})

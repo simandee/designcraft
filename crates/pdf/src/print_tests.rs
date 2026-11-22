@@ -508,7 +508,8 @@ fn rgb_blend_spot_only_document_with_cmyk_alternate_attaches_default_cmyk() {
 fn shading_grain_keeps_pdf_x4_and_pdf_a_valid() {
     let mut d = Document::new(&NewDocument::default());
     let lid = d.default_layer();
-    let (_, sid) = d.add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, 36.0, 300.0, 120.0), lid, "Grain under this line", Default::default()).unwrap();
+    let (_, sid) =
+        d.add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, 36.0, 300.0, 120.0), lid, "Grain under this line", Default::default()).unwrap();
     let para = &mut d.story_mut(sid).unwrap().paras[0].para;
     para.shading_on = Some(true);
     para.shading_color = Some("C=0 M=0 Y=100 K=0".into());
@@ -520,4 +521,3 @@ fn shading_grain_keeps_pdf_x4_and_pdf_a_valid() {
     let a2b = crate::export_pdf_with_report(&d, &Cache::new(), &PdfOptions { standard: crate::Standard::PdfA2b, ..PdfOptions::default() });
     assert!(a2b.is_ok(), "PDF/A-2b with grain: {:?}", a2b.err());
 }
-

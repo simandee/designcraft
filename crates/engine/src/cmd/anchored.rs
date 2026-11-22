@@ -873,15 +873,22 @@ fn set_picture_rect(o: &mut AnchoredObject, n: designcraft_geom::Rect) -> Option
     Some(())
 }
 
+/// A turned or sheared picture frame would grow with every crop or fit (its sides are not the
+/// box's): refused until crops work in the frame's own space.
+fn upright(o: &designcraft_doc::AnchoredObject, cmd: &str) -> Result<()> {
+    if o.picture_frame().is_some_and(|(_, xf)| designcraft_doc::AnchoredObject::axis_aligned(xf)) {
+        Ok(())
+    } else {
+        Err(bad(cmd, "a turned or sheared picture frame can't be cropped or fitted here yet; scale it instead"))
+    }
+}
+
 fn frame(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "anchored.frame";
     let (sid, k) = object_ref(s, p, CMD)?;
     let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
     let old = cur.picture_rect().ok_or_else(|| bad(CMD, "the object has no picture frame"))?;
-    // A turned or sheared frame would grow with every crop (its sides are not the box's).
-    if !cur.picture_frame().is_some_and(|(_, xf)| designcraft_doc::AnchoredObject::axis_aligned(xf)) {
-        return Err(bad(CMD, "a turned or sheared picture frame can't be cropped here yet; scale it instead"));
-    }
+    upright(&cur, CMD)?;
     let side = |key: &str| p.get(key).and_then(Value::as_f64);
     let n = match rect_param(p, "rect") {
         Some(r) => r,
@@ -937,6 +944,7 @@ fn fit(s: &mut Session, p: &Value) -> Result<Value> {
     let mode = str_param(p, "mode").unwrap_or("fitProportionally");
     if mode == "fitFrameToContent" {
         let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+        upright(&cur, CMD)?;
         let (r, _) = cur.picture_content().ok_or_else(|| bad(CMD, "the object has no picture"))?;
         return change_object(s, CMD, sid, k, |o| set_picture_rect(o, r).ok_or_else(|| bad(CMD, "the object has no picture frame")));
     }

@@ -123,6 +123,14 @@ fn tage(st: &Story, datum_stil: &str, naehe: NaiveDate) -> Vec<(NaiveDate, usize
     out
 }
 
+/// Der letzte Tag im Text `st` von `chat`: das gespeicherte Ende, bei älteren Chats ohne Ende der
+/// Tag der letzten Datumszeile (das Jahr vom Anfang des Chats oder, ist der unbekannt, vom
+/// gewählten Anfang `a.von` aus bestimmt).
+fn letzter_tag(st: &Story, chat: &Chat, a: &Auftrag) -> Option<NaiveDate> {
+    let datum = |t: &str| NaiveDate::parse_from_str(t, "%Y-%m-%d").ok();
+    datum(&chat.bis).or_else(|| tage(st, &chat.stil_name("Datum"), datum(&chat.von).or(datum(&a.von))?).last().map(|t| t.0))
+}
+
 /// Die Bytes `[anfang, ende, länge]` des Textes `st` von `chat`, die die Tage `a.von`..=`a.bis`
 /// einnehmen: ab der ersten Datumszeile ab `von` (ohne `von`: ab dem Anfang) bis vor die erste
 /// Datumszeile nach `bis` (ohne `bis` oder wenn keine folgt: bis zum Ende). Liegt der Zeitraum
@@ -130,10 +138,13 @@ fn tage(st: &Story, datum_stil: &str, naehe: NaiveDate) -> Vec<(NaiveDate, usize
 fn zeitraum_im_text(st: &Story, chat: &Chat, a: &Auftrag) -> Result<[usize; 3], String> {
     let datum = |t: &str| NaiveDate::parse_from_str(t, "%Y-%m-%d").ok();
     let (von, bis, laenge) = (datum(&a.von), datum(&a.bis), st.len());
-    let Some(naehe) = datum(&chat.von).or(von).or(bis) else { return Ok([0, laenge, laenge]) };
     if von.is_none() && bis.is_none() {
         return Ok([0, laenge, laenge]);
     }
+    // Das Jahr der Datumszeilen kommt vom Anfang des Chats; ohne ihn ließe es sich nur raten.
+    let Some(naehe) = datum(&chat.von) else {
+        return Err("Für diesen Chat ist kein Anfang gespeichert: Neu aufbauen geht hier nur für den ganzen Chat (Zeitraum „Ganzer Chat“). Danach geht es auch für einzelne Zeiträume.".into());
+    };
     let tage = tage(st, &chat.stil_name("Datum"), naehe);
     if tage.is_empty() && laenge > 0 {
         return Err("Im Text des Chats stehen keine Datumszeilen. Neu aufbauen geht hier nur für den ganzen Chat.".into());
@@ -171,8 +182,22 @@ fn pruefen(app: &DesignApp, a: &Auftrag) -> Result<(), String> {
 /// `f` als ein Rückgängig-Schritt: Einrichtung, Seiten, Text und Etikett zusammen. Geht etwas
 /// schief, ist das Dokument danach wieder genau wie vorher (keine halben Chats).
 fn als_ein_schritt<T>(app: &mut DesignApp, label: &str, f: impl FnOnce(&mut DesignApp) -> Result<T, String>) -> Result<T, String> {
+    // Der Stand davor, falls ein Befehl abstürzt: dann verwirft die Engine den Schritt, und nur
+    // dieser Stand bringt das Dokument zurück.
+    let vorher = app.session.active().map(|st| (st.uid, st.doc.clone(), st.selection.clone(), st.history.clone()));
     app.session.begin_interaction(label).map_err(|e| e.to_string())?;
-    match f(app) {
+    let offen = |app: &DesignApp| app.session.active().is_some_and(|st| st.interaction.is_some());
+    let ergebnis = f(app);
+    if !offen(app) {
+        if let (Some((uid, doc, selection, history)), Some(st)) = (vorher, app.session.active_mut())
+            && st.uid == uid
+        {
+            (st.doc, st.selection, st.history) = (doc, selection, history);
+            st.bump_revision();
+        }
+        return Err(ergebnis.err().unwrap_or_else(|| "Ein Schritt ist unerwartet abgebrochen; das Dokument ist wieder wie vorher.".into()));
+    }
+    match ergebnis {
         Ok(v) => app.session.commit_interaction().map(|()| v).map_err(|e| e.to_string()),
         Err(e) => {
             app.session.cancel_interaction();
@@ -202,15 +227,16 @@ fn einfuegen_schritt(app: &mut DesignApp, a: &Auftrag) -> Result<Chat, String> {
     if nummer == 1 && !app.session.active().is_some_and(|st| modell::namen_ohne_kuerzel_frei(&st.doc)) {
         nummer = 2;
     }
-    let (personen, story) = im_arbeitsordner(|arbeit| einfuegen_in(app, a, nummer, arbeit, None, None))?;
+    let (personen, story, zeitraum) = im_arbeitsordner(|arbeit| einfuegen_in(app, a, nummer, arbeit, None, None))?;
     let chat = Chat {
         nummer,
         name: if a.name.trim().is_empty() { format!("Chat {nummer}") } else { a.name.trim().to_string() },
         export: a.export.clone(),
         medien: a.medien.clone(),
         chat: a.chat.clone().unwrap_or_default(),
-        von: a.von.clone(),
-        bis: a.bis.clone(),
+        // Die Tage, die wirklich im Buch stehen (nicht nur der gewählte Zeitraum).
+        von: zeitraum.as_ref().map_or_else(|| a.von.clone(), |z| z.0.clone()),
+        bis: zeitraum.map_or_else(|| a.bis.clone(), |z| z.1),
         personen,
         story: Some(story),
         stil: a.stil.clone(),
@@ -235,18 +261,29 @@ fn fortsetzen_schritt(app: &mut DesignApp, a: &Auftrag, chat: &Chat, wohin: Wohi
     let mut chats = app.session.active().map(|st| modell::chats(&st.doc, &lies_stil())).unwrap_or_default();
     let personen = (!chat.personen.is_empty()).then_some(chat.personen.as_slice());
     let (Wohin::Anhaengen(story) | Wohin::Ersetzen(story)) = wohin;
-    if matches!(wohin, Wohin::Anhaengen(_)) && !chat.bis.is_empty() && (a.von.is_empty() || a.von <= chat.bis) {
-        return Err(format!("Der Chat reicht schon bis {}: Fortsetzen braucht einen Anfang danach, sonst stünden Tage doppelt im Buch.", chat.bis));
-    }
     let bytes = {
         let doc = &app.session.active().ok_or("kein Dokument")?.doc;
         let st = doc.story(StoryId(story)).ok_or("Der Text des Chats fehlt.")?;
         match wohin {
-            Wohin::Anhaengen(_) => [st.len(); 3],
+            Wohin::Anhaengen(_) => {
+                // Der letzte Tag im Text (bei älteren Chats ohne gespeichertes Ende aus den
+                // Datumszeilen): Fortsetzen beginnt danach, sonst stünden Tage doppelt im Buch
+                // (ohne Anfang käme sogar der ganze Chat noch einmal).
+                let von = NaiveDate::parse_from_str(&a.von, "%Y-%m-%d").ok();
+                if let Some(ende) = letzter_tag(st, chat, a)
+                    && von.is_none_or(|v| v <= ende)
+                {
+                    return Err(format!(
+                        "Der Chat reicht schon bis {}: Fortsetzen braucht einen Anfang danach, sonst stünden Tage doppelt im Buch.",
+                        super::kalender::kurz(ende)
+                    ));
+                }
+                [st.len(); 3]
+            }
             Wohin::Ersetzen(_) => zeitraum_im_text(st, chat, a)?,
         }
     };
-    let (neu, story) = im_arbeitsordner(|arbeit| einfuegen_in(app, a, chat.nummer, arbeit, Some((story, bytes)), personen))?;
+    let (neu, story, zeitraum) = im_arbeitsordner(|arbeit| einfuegen_in(app, a, chat.nummer, arbeit, Some((story, bytes)), personen))?;
     let mut chat = chat.clone();
     chat.story = Some(story);
     (chat.export, chat.medien) = (a.export.clone(), a.medien.clone());
@@ -259,16 +296,21 @@ fn fortsetzen_schritt(app: &mut DesignApp, a: &Auftrag, chat: &Chat, wohin: Wohi
     }
     match wohin {
         Wohin::Ersetzen(_) => {
-            // Der Chat umfasst nun seinen bisherigen und den neu aufgebauten Zeitraum (leer: offen).
-            let offen = |x: &str, y: &str| x.is_empty() || y.is_empty();
-            chat.von = if offen(&chat.von, &a.von) { String::new() } else { chat.von.as_str().min(a.von.as_str()).to_string() };
-            chat.bis = if offen(&chat.bis, &a.bis) { String::new() } else { chat.bis.as_str().max(a.bis.as_str()).to_string() };
+            // Der Chat umfasst seinen bisherigen und den neu aufgebauten Zeitraum: die Tage, die
+            // wirklich im Buch stehen (ein ganz neu aufgebauter Chat bekommt genau seine).
+            let ganz = a.von.is_empty() && a.bis.is_empty();
+            if let Some((von, bis)) = zeitraum {
+                let frueher = |alt: &str| if ganz || alt.is_empty() { von.clone() } else { alt.min(von.as_str()).to_string() };
+                let spaeter = |alt: &str| if ganz || alt.is_empty() { bis.clone() } else { alt.max(bis.as_str()).to_string() };
+                (chat.von, chat.bis) = (frueher(&chat.von), spaeter(&chat.bis));
+            }
         }
         Wohin::Anhaengen(_) => {
-            if chat.von.is_empty() {
-                chat.von = a.von.clone();
+            // Das Ende rückt auf den letzten angehängten Tag. Ein unbekannter Anfang bleibt
+            // unbekannt: der erste angehängte Tag ist nicht der erste Tag des Chats.
+            if let Some((_, bis)) = zeitraum {
+                chat.bis = bis;
             }
-            chat.bis = a.bis.clone();
         }
     }
     match chats.iter_mut().find(|c| c.nummer == chat.nummer) {
@@ -282,9 +324,10 @@ fn fortsetzen_schritt(app: &mut DesignApp, a: &Auftrag, chat: &Chat, wohin: Wohi
     Ok(chat)
 }
 
-/// Hilfsprogramm aufrufen und die Skripte ausführen; gibt die Personen des Chats und seinen Text
-/// zurück. `ziel`: None für einen neuen Chat, sonst der Text eines Chats und die Bytes
-/// `[anfang, ende, länge]`, an deren Stelle der Zeitraum kommt.
+/// Hilfsprogramm aufrufen und die Skripte ausführen; gibt die Personen des Chats, seinen Text und
+/// den ersten und letzten Tag zurück, die wirklich eingefügt wurden. `ziel`: None für einen neuen
+/// Chat, sonst der Text eines Chats und die Bytes `[anfang, ende, länge]`, an deren Stelle der
+/// Zeitraum kommt.
 fn einfuegen_in(
     app: &mut DesignApp,
     a: &Auftrag,
@@ -292,7 +335,7 @@ fn einfuegen_in(
     arbeit: &std::path::Path,
     ziel: Option<(u64, [usize; 3])>,
     personen: Option<&[Person]>,
-) -> Result<(Vec<Person>, u64), String> {
+) -> Result<(Vec<Person>, u64, Option<(String, String)>), String> {
     let inspect = app.session.execute("document.inspect", &json!({})).map_err(|e| e.to_string())?;
     let laenge = |story: u64| {
         inspect["stories"].as_array().and_then(|a| a.iter().find(|s| s["id"].as_u64() == Some(story))).and_then(|s| s["length"].as_u64())
@@ -302,6 +345,7 @@ fn einfuegen_in(
     let stil_pfad = arbeit.join("stil.json");
     std::fs::write(&stil_pfad, Value::Object(stil_fuer_hilfsprogramm(a)).to_string()).map_err(|e| e.to_string())?;
     let (einr, inh, pers) = (arbeit.join("einrichtung.jsonl"), arbeit.join("inhalt.jsonl"), arbeit.join("personen.json"));
+    let tage_pfad = arbeit.join("zeitraum.json");
     let p = |x: &std::path::Path| x.to_string_lossy().into_owned();
     app.status("Jahresbuch: Chat wird aufbereitet …");
     let mut cmd = std::process::Command::new(&a.python);
@@ -310,6 +354,7 @@ fn einfuegen_in(
         .arg(&a.medien)
         .arg(&inh)
         .args(["--dokument", &p(&insp_pfad), "--einrichtung-ausgabe", &p(&einr), "--personen-ausgabe", &p(&pers)])
+        .args(["--zeitraum-ausgabe", &p(&tage_pfad)])
         .args(["--von", &a.von, "--bis", &a.bis, "--nummer", &nummer.to_string()])
         .args(["--stil", &p(&stil_pfad), "--arbeitsordner", &p(&home().join("Jahresbuch").join("chat_dateien"))]);
     if let Some(c) = &a.chat {
@@ -367,7 +412,11 @@ fn einfuegen_in(
     skript(app, inhalt.replace("\"__STORY__\"", &story.to_string()))?;
     // 4. Passt er nicht, kommen Chat-Seiten am Ende dazu, zwei Spalten je Seite.
     seiten_bis_alles_passt(app, story, letzter, &vorlage)?;
-    Ok((personen, story))
+    let zeitraum = std::fs::read_to_string(&tage_pfad).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| {
+        let tag = |k: &str| v[k].as_str().filter(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok()).map(str::to_string);
+        Some((tag("von")?, tag("bis")?))
+    });
+    Ok((personen, story, zeitraum))
 }
 
 /// Eine neue Chat-Seite mit einem Rahmen je Spalte, verkettet: (erster Rahmen, Text).

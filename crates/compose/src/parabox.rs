@@ -251,7 +251,7 @@ fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
 fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
     let rect = under.rect;
     let cells = (rect.width() / SPECK_STEP + 1.0) * (rect.height() / SPECK_STEP + 1.0);
-    if !(cells <= MAX_SPECK_CELLS) {
+    if cells.is_nan() || cells > MAX_SPECK_CELLS {
         return None;
     }
     let outline = under.path.clone().unwrap_or_else(|| rect.to_path(TOL));
@@ -680,7 +680,8 @@ mod dotted_tests {
     /// specks all the way down instead of stopping part way.
     #[test]
     fn specks_cover_a_big_box_evenly_and_stay_inside() {
-        let rect = Rect::new(0.0, 0.0, 600.0, 900.0);
+        // Past the threshold: at full amount it has more cells than specks may be drawn.
+        let rect = Rect::new(0.0, 0.0, 700.0, 1000.0);
         let under = Deco { rect, color: "[Black]".into(), tint: 1.0, ..Default::default() };
         let sp = Speckle { amount: 1.0, color: "[Paper]".into(), tint: 1.0, over_text: false, overprint: false };
         let dots = speckle_deco(&sp, &under).and_then(|d| d.dots).unwrap();

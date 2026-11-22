@@ -206,7 +206,17 @@ fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
         assert!(neu.iter().all(|(pi, _)| st.paras[*pi].para.left_indent != Some(40.0)), "der Einzug des letzten Absatzes wandert nicht mit");
     }
     let gespeichert = modell::chats(&app.session.active().unwrap().doc, &Default::default());
-    assert_eq!(gespeichert[0].bis, "2026-11-30");
+    assert!(
+        chat.bis.as_str() <= "2026-11-10" && gespeichert[0].bis.as_str() > "2026-11-10" && gespeichert[0].bis.as_str() <= "2026-11-30",
+        "das Ende rückt auf den letzten angehängten Tag: {} → {}",
+        chat.bis,
+        gespeichert[0].bis
+    );
+    assert!(
+        super::einfuegen::fortsetzen(&mut app, &auftrag("2026-11-20", "2026-11-30"), &gespeichert[0], super::einfuegen::Wohin::Anhaengen(story.0))
+            .is_err(),
+        "Fortsetzen mit Tagen, die schon im Buch stehen, wird abgelehnt"
+    );
     // Eine Änderung im ersten Zeitraum und eine im angehängten.
     einfuegen_bei(&mut app, nachher.len(), " DAHINTER");
     let zweiter_absatz = nachher.find('\n').unwrap() + 1;
@@ -216,6 +226,6 @@ fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
     let neu_aufgebaut = text(&app);
     assert!(!neu_aufgebaut.contains("DARIN") && neu_aufgebaut.contains(" DAHINTER"), "nur der gewählte Zeitraum ist neu gesetzt");
     assert_eq!(neu_aufgebaut.replace(" DAHINTER", ""), nachher, "der Zeitraum steht wieder wie eingefügt, der Rest bleibt");
-    let gespeichert = modell::chats(&app.session.active().unwrap().doc, &Default::default());
-    assert_eq!((gespeichert[0].von.as_str(), gespeichert[0].bis.as_str()), ("2026-11-01", "2026-11-30"), "der Chat umfasst weiter beide Zeiträume");
+    let danach = modell::chats(&app.session.active().unwrap().doc, &Default::default());
+    assert_eq!((&danach[0].von, &danach[0].bis), (&gespeichert[0].von, &gespeichert[0].bis), "der Chat umfasst weiter beide Zeiträume");
 }

@@ -1288,11 +1288,16 @@ impl SelectionTool {
     }
 }
 
-/// Is the text holding object `o` what a click at `p` hits (no other object lies over it there)?
-fn on_top(cx: &ToolContext, o: crate::inline::Inline, p: Point) -> bool {
-    let top = |id: ItemId| cx.doc.top_level_of(id).unwrap_or(id);
-    let Some((_, hit)) = cx.hit(p) else { return false };
-    cx.doc.story(o.story).is_some_and(|st| st.frames.iter().any(|f| top(*f) == top(hit)))
+impl SelectionTool {
+    /// Does a press at `p` belong to the selected objects (a handle, the rotate zone, a corner
+    /// diamond, a widget or a content handle), so that it doesn't pick an object in text?
+    fn selection_handle_at(&self, cx: &ToolContext, p: Point) -> bool {
+        handle_at(cx, p).is_some()
+            || rotate_zone(cx, p).is_some()
+            || content_handle_at(cx, p).is_some()
+            || self.diamond_at(cx, p).is_some()
+            || self.widget_at(cx, p).is_some()
+    }
 }
 
 /// The object in text that is the selection.
@@ -1329,8 +1334,12 @@ impl SelectionTool {
         };
         match ev.kind {
             PointerKind::Down | PointerKind::DoubleClick if ev.click_count() == 2 => {
-                // A double click on a picture in text goes between its frame and the picture.
-                let (o, _) = crate::inline::at(cx, p)?;
+                // A double click on a picture in text goes between its frame and the picture
+                // (unless a handle of the selection, or an object over the text, is there).
+                if self.selection_handle_at(cx, p) {
+                    return None;
+                }
+                let (o, _) = crate::inline::at(cx, p).filter(|(o, _)| crate::inline::on_top(cx, *o, p))?;
                 crate::inline::content_rect(cx, o)?;
                 self.drag = Drag::None;
                 let content = sel.is_some_and(|s| s.story == o.story && s.index == o.index && !s.content);
@@ -1374,10 +1383,9 @@ impl SelectionTool {
                 if !ev.mods.shift
                     && !ev.mods.cmd
                     && !ev.mods.alt
-                    && handle_at(cx, p).is_none()
-                    && rotate_zone(cx, p).is_none()
+                    && !self.selection_handle_at(cx, p)
                     && let Some((o, _)) = crate::inline::at(cx, p)
-                    && on_top(cx, o, p)
+                    && crate::inline::on_top(cx, o, p)
                 {
                     self.drag = Drag::None;
                     if crate::inline::on_grabber(cx, o, p)
@@ -1404,8 +1412,8 @@ impl SelectionTool {
                     let (cmd, p) = match how {
                         InlineDrag::Crop(h) => {
                             // The dragged side stops 4 pt (a hair more, against rounding) before the
-                            // opposite one, in the object's own size.
-                            let min = 4.01 * place.determinant().abs().sqrt();
+                            // opposite one, in the object's own size along each axis.
+                            let min = crate::inline::canvas_min(place, 4.01);
                             let r = inv.transform_rect_bbox(crate::inline::dragged_rect(start, h, p, min));
                             ("anchored.frame", params(json!({"rect": [r.x0, r.y0, r.x1, r.y1]})))
                         }

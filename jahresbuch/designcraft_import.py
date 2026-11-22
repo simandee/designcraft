@@ -293,6 +293,7 @@ class Importer:
         self.absaetze = []
         self.steps = []
         self.deko_verlauf = []
+        self.tage = []  # die Tage mit Nachrichten, in der Reihenfolge ihrer Datumszeilen
         # Zieldokument (document.inspect als JSON), wenn in ein bestehendes Buch importiert wird
         dok_pfad = getattr(args, "dokument", None)
         self.dok = json.load(open(dok_pfad, encoding="utf-8")) if dok_pfad else None
@@ -484,6 +485,7 @@ class Importer:
     def datum(self, d):
         """Datumszeile mit einer zufälligen (aber pro Datum festen) Riso-Verzierung links und rechts."""
         rnd = random.Random(d.isoformat())
+        self.tage.append(d)
         zuletzt = self.deko_verlauf[-5:]
         art = rnd.choice([x for x in DEKO_ARTEN if x not in zuletzt])
         self.deko_verlauf.append(art)
@@ -1223,7 +1225,12 @@ class Importer:
         laenge Bytes lang ist: in einen leeren Text, hinten an (anfang = ende = laenge, Fortsetzen)
         oder anstelle eines Zeitraums (Neu aufbauen). Der Text davor und dahinter bleibt."""
         s = self.s
-        if ende < laenge:
+        if anfang < ende < laenge and text:
+            # Mitten im Chat: die Zeilenschaltung vor dem nächsten Tag bleibt stehen (und mit ihr
+            # dessen Absatz samt Handarbeit); ersetzt wird bis davor.
+            ende -= 1
+            neu = text
+        elif ende < laenge:
             neu = text + "\n" if text else ""
         elif anfang == laenge and anfang > 0:
             neu = "\n" + text if text else ""
@@ -1320,6 +1327,7 @@ def main():
     ap.add_argument("--personen", help="Personen als JSON (Liste oder Datei): [{key, name, ids, farbe}]")
     ap.add_argument("--nummer", type=int, default=1, help="Nummer des Chats im Buch (ab 2: eigene Formate und Farbfelder)")
     ap.add_argument("--personen-ausgabe", help="Datei, in die die Personen des Chats (JSON) geschrieben werden")
+    ap.add_argument("--zeitraum-ausgabe", help="Datei für den ersten und letzten Tag, die wirklich eingefügt werden (JSON {von, bis})")
     ap.add_argument("--stil", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "stil.json"))
     ap.add_argument("--schrift", help='Schrift für den Chat, z. B. "Space Grotesk" (Standard) oder "Work Sans"')
     ap.add_argument("--von"); ap.add_argument("--bis"); ap.add_argument("--emoji-font"); ap.add_argument("--arbeitsordner")
@@ -1336,6 +1344,9 @@ def main():
     if args.personen_ausgabe:
         with open(args.personen_ausgabe, "w", encoding="utf-8") as fh:
             json.dump(imp.personen, fh, ensure_ascii=False)
+    if args.zeitraum_ausgabe and imp.tage:
+        with open(args.zeitraum_ausgabe, "w", encoding="utf-8") as fh:
+            json.dump({"von": imp.tage[0].isoformat(), "bis": imp.tage[-1].isoformat()}, fh)
     n = imp.skript()
     print(f"{len(imp.absaetze)} Absätze, {n} Befehle -> {args.ausgabe}")
 

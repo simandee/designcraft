@@ -104,7 +104,7 @@ fn starten(_ctx: egui::Context, f: impl FnOnce() + Send + 'static) {
 /// Klick, damit „wird aufbereitet …“ vorher im Fenster steht.
 enum Arbeit {
     Einfuegen(Auftrag),
-    Weiter(Auftrag, Chat, einfuegen::Wohin),
+    Weiter(Auftrag, Box<Chat>, einfuegen::Wohin),
 }
 
 /// Was das Fenster sich merkt.
@@ -489,7 +489,12 @@ pub(super) fn anwenden(app: &mut DesignApp, alle: &[Chat], chat: &Chat) {
     let Some(st) = app.session.active() else { return };
     // Eine laufende Vorschau spielt ihr Skript immer auf dem Stand davor ab.
     let basis = st.interaction.as_ref().map_or_else(|| st.doc.clone(), |i| i.doc.clone());
-    let alt = modell::chats(&basis, &app.jahresbuch.vorgabe).into_iter().find(|c| c.nummer == chat.nummer);
+    // Nur Geändertes; ein Chat von vor dem Etikett bekommt einmal alles (bringt ältere Formate
+    // auf den Stand, etwa die Blasenecken).
+    let alt = modell::chats(&basis, &app.jahresbuch.vorgabe)
+        .into_iter()
+        .find(|c| c.nummer == chat.nummer)
+        .filter(|_| modell::im_etikett(&basis, chat.nummer));
     let mut befehle = g::geaenderte_befehle(&basis, alt.as_ref(), chat);
     let neu: Vec<Chat> = alle.iter().map(|c| if c.nummer == chat.nummer { chat.clone() } else { c.clone() }).collect();
     befehle.push(modell::speichern(&neu));
@@ -712,7 +717,7 @@ fn weiter_bereich(app: &mut DesignApp, ui: &mut Ui, chat: &Chat, story: u64) {
             farben_wie: Vec::new(),
         };
         let wohin = if ersetzen { einfuegen::Wohin::Ersetzen(story) } else { einfuegen::Wohin::Anhaengen(story) };
-        bestellen(app, ui, Arbeit::Weiter(auftrag, chat.clone(), wohin));
+        bestellen(app, ui, Arbeit::Weiter(auftrag, Box::new(chat.clone()), wohin));
     }
     wird_aufbereitet(app, ui);
     if let Some(e) = &app.jahresbuch.fehler {

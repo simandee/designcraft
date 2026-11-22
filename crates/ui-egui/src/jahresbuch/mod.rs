@@ -117,6 +117,7 @@ pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String>
     };
     let chat = chats.iter_mut().find(|c| u64::from(c.nummer) == n).ok_or_else(|| format!("Im Dokument gibt es keinen Chat {n}."))?;
     let alt = chat.clone();
+    let im_etikett = app.session.active().is_some_and(|st| modell::im_etikett(&st.doc, alt.nummer));
     if let Some(name) = p.get("name").and_then(Value::as_str) {
         chat.name = name.to_string();
     }
@@ -139,7 +140,7 @@ pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String>
     let chat = chat.clone();
     app.end_live_preview();
     let doc = app.session.active().map(|st| st.doc.clone()).ok_or("kein Dokument")?;
-    let mut befehle = gestaltung::geaenderte_befehle(&doc, Some(&alt), &chat);
+    let mut befehle = gestaltung::geaenderte_befehle(&doc, im_etikett.then_some(&alt), &chat);
     befehle.push(modell::speichern(&chats));
     skript(app, gestaltung::als_skript(&befehle))?;
     serde_json::to_value(&chat).map_err(|e| e.to_string())

@@ -159,10 +159,13 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
 Schritt), ☰ „Neuen Chat einfügen …“, Zeitraum-Kalender, Komma in Zahlenfeldern, mehrere Chats mit
 eigenem Look, „Aussehen wie Chat …“, Personenfarben (in Gruppenchats dazu „Akzent“ für Datum,
 Verzierungen und den Schatten der Spalten-Box), Fortsetzen und Neu aufbauen (Hilfsprogramm
-`--ersetzen ANFANG ENDE LÄNGE`). Fortsetzen braucht einen Anfang nach dem Ende des Chats; Neu aufbauen
-setzt nur die Tage des gewählten Zeitraums neu (gefunden an den Datumszeilen, das Jahr über den
-Wochentag), was davor und danach steht, bleibt. Der Chat merkt sich seinen Text im Etikett, damit
-Fortsetzen nicht versehentlich einen kopierten Ausschnitt trifft. Die alten Dialoge und das Menü „Jahresbuch“ sind weg (User-Wunsch 22.11.2026); das
+`--ersetzen ANFANG ENDE LÄNGE`). Der Chat merkt sich im Etikett die Tage, die **wirklich** im Buch
+stehen (erster und letzter Tag mit Nachrichten, vom Hilfsprogramm gemeldet über `--zeitraum-ausgabe`),
+und seinen Text (damit Fortsetzen nicht versehentlich einen kopierten Ausschnitt trifft).
+Fortsetzen braucht einen Anfang nach dem letzten Tag im Buch; Neu aufbauen setzt nur die Tage des
+gewählten Zeitraums neu (gefunden an den Datumszeilen, das Jahr über den Wochentag, ausgehend vom
+ersten Tag des Chats), was davor und danach steht, bleibt samt Handarbeit. Ohne gespeicherten
+ersten Tag (ältere Chats, „Ganzer Chat“ vor dem 22.11.2026) geht Neu aufbauen nur für den ganzen Chat. Die alten Dialoge und das Menü „Jahresbuch“ sind weg (User-Wunsch 22.11.2026); das
 Fenster öffnet sich über **Window › Jahresbuch** in jedem Arbeitsbereich. Die Befehle
 `jahresbuch.chatImport`/`chatDesign` bleiben für die Automatik (mit Angaben laufen sie direkt). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
 **Noch offen:** Personen umbenennen und zusammenlegen. (Chat-Fotos im Eigenschaften-Fenster: erledigt, siehe oben.)

@@ -71,6 +71,29 @@ fn open_at(cx: &ToolContext, loc: &ItemLoc) -> bool {
     true
 }
 
+/// The text frame that shows object `o`.
+fn frame_of(cx: &ToolContext, o: Inline) -> Option<designcraft_doc::ItemId> {
+    cx.cache.get(cx.doc, o.story, None).frames.iter().find(|ft| ft.objects.iter().any(|x| x.index == o.index)).map(|ft| ft.frame)
+}
+
+/// Is object `o` what a click at `p` reaches: nothing on the page is hit there, or the frontmost
+/// item hit is its own text frame or one drawn below it? An object lying over the text wins.
+pub fn on_top(cx: &ToolContext, o: Inline, p: Point) -> bool {
+    let Some((_, hit)) = cx.hit(p) else { return true };
+    let Some(frame) = frame_of(cx, o) else { return true };
+    let top = |id: designcraft_doc::ItemId| cx.doc.top_level_of(id).unwrap_or(id);
+    let (hit, frame) = (top(hit), top(frame));
+    // Paint order: by layer, then by place in the spread's list (as the hit test sees it).
+    let order = |id: designcraft_doc::ItemId| {
+        let loc = cx.doc.find(id)?;
+        Some((loc.spread, cx.doc.layer_rank(cx.doc.item(id)?.layer), *loc.path.first()?))
+    };
+    match (order(hit), order(frame)) {
+        (Some((sh, lh, ih)), Some((sf, lf, i_f))) if sh == sf => hit == frame || (lh, ih) < (lf, i_f),
+        _ => true,
+    }
+}
+
 /// Where object `o` shows: the transform from its space to the canvas and its size, in the frame
 /// that shows it (None when that frame is hidden, locked or not on a page).
 fn place(cx: &ToolContext, o: Inline) -> Option<(Affine, Size)> {
@@ -193,22 +216,29 @@ pub fn on_grabber(cx: &ToolContext, o: Inline, p: Point) -> bool {
 const GRABBER_PX: f64 = 9.0;
 
 /// Handle `h` of `start` (canvas) dragged to `p`: the box with that side or corner moved there,
-/// the opposite one kept; at least `min` wide and tall.
-pub fn dragged_rect(start: Rect, h: usize, p: Point, min: f64) -> Rect {
+/// the opposite one kept; at least `min` = (width, height) in size.
+pub fn dragged_rect(start: Rect, h: usize, p: Point, min: (f64, f64)) -> Rect {
     let mut r = start;
     if matches!(h, 0 | 6 | 7) {
-        r.x0 = p.x.min(r.x1 - min);
+        r.x0 = p.x.min(r.x1 - min.0);
     }
     if matches!(h, 2..=4) {
-        r.x1 = p.x.max(r.x0 + min);
+        r.x1 = p.x.max(r.x0 + min.0);
     }
     if matches!(h, 0..=2) {
-        r.y0 = p.y.min(r.y1 - min);
+        r.y0 = p.y.min(r.y1 - min.1);
     }
     if matches!(h, 4..=6) {
-        r.y1 = p.y.max(r.y0 + min);
+        r.y1 = p.y.max(r.y0 + min.1);
     }
     r
+}
+
+/// `side` points in object space as canvas lengths (width, height) under placement `m` (upright,
+/// quarter turns swap the axes): a crop stops there in each direction.
+pub fn canvas_min(m: Affine, side: f64) -> (f64, f64) {
+    let [a, b, c, d, _, _] = m.as_coeffs();
+    if b.abs() + c.abs() <= a.abs() + d.abs() { (side * a.abs(), side * d.abs()) } else { (side * c.abs(), side * b.abs()) }
 }
 
 /// The corner or side that stays while handle `h` of `r` is dragged.
@@ -219,7 +249,9 @@ pub fn opposite(r: Rect, h: usize) -> Point {
 /// Content grabbers on show for objects in text: the selected one's and the hovered one's.
 pub fn grabbers(cx: &ToolContext, hover: Option<Point>) -> Vec<Point> {
     let mut out: Vec<Inline> = cx.selection.inline_object().map(|s| Inline { story: s.story, index: s.index }).into_iter().collect();
-    if let Some((o, _)) = hover.and_then(|p| at(cx, p))
+    if let Some(p) = hover
+        && let Some((o, _)) = at(cx, p)
+        && on_top(cx, o, p)
         && !out.contains(&o)
     {
         out.push(o);
