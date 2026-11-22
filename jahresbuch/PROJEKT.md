@@ -261,10 +261,19 @@ fand elf weitere Punkte (u. a. echte erste/letzte Tage statt des gewählten Zeit
 Handarbeit an der Datumszeile nach einem neu aufgebauten Zeitraum, Klick-Vorrang); alle behoben.
 
 **Offen (bewusst noch nicht gemacht):**
-- **PDF-Größe:** Die Sprenkel der Spalten-Box liegen zu ~98 % unsichtbar unter der Papierfläche und
-  landen trotzdem im PDF (~5 MB je Chat-Seite). Abhilfe ändert den Aufbau der Spalten-Box –
-  erst mit dem User abstimmen (Varianten zeigen).
 - Kleinigkeiten: Neu aufbauen mit kürzerem Zeitraum lässt leere Chat-Seiten am Ende; Pfade von
   Export und Medienordner eines Chats im Fenster nicht änderbar; Feld für Rauschen im
   Absatzschattierungs-Dialog; IDML-Export verliert das Chat-Etikett.
+
+**PDF-Größe (22.11.2026, User: „Wir brauchen nur die sichtbaren Sprenkel!“):** Der blaue Schatten der
+Spalten-Box ist jetzt fünf Teile am sichtbaren Rand (Hilfsprogramm `schatten_teile`, in Python und
+Rust gleich): drei Eckstücke, groß genug für die volle Rundung von 9 pt, und dazwischen zwei
+schmale Kanten rechts und unten. Nur dort schaut er unter der Papierfläche hervor. Bücher mit dem
+alten großen Schatten werden beim nächsten Einfügen, Fortsetzen oder Gestalten still umgebaut, für
+alle Chats, auf derselben Ebene und an derselben Stelle (`gestaltung::schatten_umbauen`). Außerdem
+bekommt ein Blasen-Schatten keine Sprenkel mehr dort, wo die Blase ihn ganz verdeckt (Prüfung an
+acht Punkten am Sprenkelrand, auch an runden Ecken). Im Bild ändert sich nichts (Vergleich Seite 2:
+42 von 8 Mio. Bildpunkten); das Test-PDF schrumpfte von 39 auf 10 MB (7 Seiten). Was bleibt, sind
+sichtbare Sprenkel – und die unter Fotos in Bildblasen (das Foto deckt sie; bei wenigen Fotos je
+Seite wenig).
 

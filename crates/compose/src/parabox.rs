@@ -248,7 +248,9 @@ fn speck_noise(ix: i64, iy: i64, k: u64) -> f64 {
 /// The specks over a box: small round dots of varied size on a jittered grid, kept inside the
 /// box's outline. The grid is anchored to the frame, so the pattern doesn't change when the text
 /// around it does.
-fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
+/// `cover`: an opaque outline drawn over these specks (the shading box over its shadow); specks it
+/// hides completely are left out, so a shadow keeps only the specks that show.
+fn speckle_deco(sp: &Speckle, under: &Deco, cover: Option<&BezPath>) -> Option<Deco> {
     let rect = under.rect;
     let cells = (rect.width() / SPECK_STEP + 1.0) * (rect.height() / SPECK_STEP + 1.0);
     if cells.is_nan() || cells > MAX_SPECK_CELLS {
@@ -270,6 +272,13 @@ fn speckle_deco(sp: &Speckle, under: &Deco) -> Option<Deco> {
             let size = speck_noise(ix, iy, 3);
             let r = if size > 0.93 { 0.45 + size * 0.35 } else { 0.12 + size * 0.28 };
             if !rect.contains(c) || !outline.contains(c) {
+                continue;
+            }
+            // Covered when its edge is, all round (the diagonals too: at a rounded corner they reach
+            // out furthest).
+            let d = r * std::f64::consts::FRAC_1_SQRT_2 * 1.01;
+            let rim = [(r, 0.0), (-r, 0.0), (0.0, r), (0.0, -r), (d, d), (d, -d), (-d, d), (-d, -d)];
+            if cover.is_some_and(|o| rim.iter().all(|&(dx, dy)| o.contains(c + kurbo::Vec2::new(dx * 1.01, dy * 1.01)))) {
                 continue;
             }
             dots.push([c.x as f32, c.y as f32, r as f32]);
@@ -353,13 +362,18 @@ fn group_decos(out: &ComposedStory, paras: std::ops::RangeInclusive<usize>, b: &
             // The shadow goes first: "under" decorations are drawn in the order they are pushed.
             if let Some(sh) = &s.shadow {
                 let shadow = shadow_deco(sh, &deco, s.nonprinting);
-                let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &shadow));
+                // The box hides the part of its shadow it lies over (specks over the text excepted:
+                // they are drawn over the box too).
+                let opaque = !deco.color.is_empty() && deco.color != designcraft_color::swatch::NONE;
+                let cover = (opaque && s.speckle.as_ref().is_some_and(|sp| !sp.over_text))
+                    .then(|| deco.path.clone().unwrap_or_else(|| deco.rect.to_path(TOL)));
+                let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &shadow, cover.as_ref()));
                 let grain = s.noise.as_ref().map(|n| grain_deco(n.amount, true, &shadow));
                 decos.push((part.fi, true, shadow));
                 decos.extend(grain.map(|d| (part.fi, true, d)));
                 decos.extend(specks.map(|d| (part.fi, !d.over_text, d)));
             }
-            let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &deco));
+            let specks = s.speckle.as_ref().and_then(|sp| speckle_deco(sp, &deco, None));
             let grain = s.noise.as_ref().map(|n| grain_deco(n.amount, false, &deco));
             decos.push((part.fi, true, deco));
             decos.extend(grain.map(|d| (part.fi, true, d)));
@@ -684,12 +698,35 @@ mod dotted_tests {
         let rect = Rect::new(0.0, 0.0, 700.0, 1000.0);
         let under = Deco { rect, color: "[Black]".into(), tint: 1.0, ..Default::default() };
         let sp = Speckle { amount: 1.0, color: "[Paper]".into(), tint: 1.0, over_text: false, overprint: false };
-        let dots = speckle_deco(&sp, &under).and_then(|d| d.dots).unwrap();
+        let dots = speckle_deco(&sp, &under, None).and_then(|d| d.dots).unwrap();
         assert!(dots.len() <= MAX_SPECKS);
         assert!(dots.iter().all(|&[x, y, _]| rect.contains(kurbo::Point::new(f64::from(x), f64::from(y)))), "inside the box");
         assert!(dots.iter().any(|d| f64::from(d[1]) > rect.y1 - 50.0), "specks reach the bottom of the box");
         let huge = Deco { rect: Rect::new(0.0, 0.0, 1.0e6, 1.0e6), ..under };
-        assert!(speckle_deco(&sp, &huge).is_none(), "a huge box gets no specks rather than a long loop");
+        assert!(speckle_deco(&sp, &huge, None).is_none(), "a huge box gets no specks rather than a long loop");
+    }
+
+    /// A shadow's specks that its box hides completely are left out; where the shadow shows they
+    /// stay as before.
+    #[test]
+    fn shadow_specks_under_the_box_are_left_out() {
+        let box_rect = Rect::new(0.0, 0.0, 200.0, 100.0);
+        let corners = [Corner { shape: designcraft_geom::corners::CornerShape::Rounded, size: 7.0 }; 4];
+        let outline = box_outline(box_rect, &corners, [true; 4]);
+        let shadow = Deco { rect: box_rect + kurbo::Vec2::new(4.0, 4.0), color: "[Black]".into(), tint: 1.0, ..Default::default() };
+        let sp = Speckle { amount: 1.0, color: "[Paper]".into(), tint: 1.0, over_text: false, overprint: false };
+        let all = speckle_deco(&sp, &shadow, None).and_then(|d| d.dots).unwrap();
+        let shown = speckle_deco(&sp, &shadow, Some(&outline)).and_then(|d| d.dots).unwrap();
+        assert!(shown.len() * 10 < all.len(), "most of the shadow lies under its box: {} of {}", shown.len(), all.len());
+        // Every speck left out lies wholly inside the rounded box, its rim too (checked finely).
+        let gone: Vec<&[f32; 3]> = all.iter().filter(|d| !shown.contains(d)).collect();
+        for &&[x, y, r] in &gone {
+            let (c, r) = (kurbo::Point::new(f64::from(x), f64::from(y)), f64::from(r));
+            assert!(
+                (0..32).all(|k| outline.contains(c + kurbo::Vec2::from_angle(f64::from(k) * std::f64::consts::TAU / 32.0) * r)),
+                "a hidden speck shows at {c:?}"
+            );
+        }
     }
 
     /// The tile is noise: varied, and dark grain centred on half ink while light grain is mostly

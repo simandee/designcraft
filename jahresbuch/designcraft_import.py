@@ -44,6 +44,7 @@ RAND = {"top": 60, "bottom": 77.1, "inside": 57.2, "outside": 57.2}
 STEG = 32.2
 BOX_RAND = 9
 SCHATTEN_VERSATZ = 4  # so weit liegt der blaue Schatten der Spaltenbox nach rechts unten versetzt (pt)
+ECKE = 9  # Rundung der Spaltenbox und ihres Schattens (pt)
 SPALTE_B = (SEITE_B - RAND["inside"] - RAND["outside"] - STEG) / 2
 BLASE_EINZUG = 60          # so weit bleibt die andere Seite frei (max. Blasenbreite)
 BILD_B = SPALTE_B - BLASE_EINZUG - 7 - 6  # Breite eines Einzelbilds in der Blase
@@ -125,6 +126,21 @@ def zeit(m):
 
 def datumszeile(d):
     return f"{WOCHENTAGE[d.weekday()]}, {d.day}. {MONATE[d.month - 1]}"
+
+
+def schatten_teile(box):
+    """Der sichtbare Rand des Spaltenbox-Schattens [(Rechteck, runde Ecke 0–3 oder None)]: drei
+    Eckstücke (oben rechts, unten rechts, unten links; 2 × ECKE groß, damit ihre Rundung ganz ist)
+    und dazwischen die rechte und die untere Kante, je 1 pt unter die Papierfläche reichend. Nur dort
+    schaut der Schatten hervor; eine ganze Fläche hätte Sprenkel, die niemand sieht, die aber das
+    PDF füllen. Die Teile überlappen um 1 pt, damit keine Naht bleibt. Wie in gestaltung.rs."""
+    v, e2 = SCHATTEN_VERSATZ, 2 * ECKE
+    x0, y0, x1, y1 = box[0] + v, box[1] + v, box[2] + v, box[3] + v
+    return [([x1 - e2, y0, x1, y0 + e2], 1),
+            ([box[2] - 1, y0 + e2 - 1, x1, y1 - e2 + 1], None),
+            ([x1 - e2, y1 - e2, x1, y1], 2),
+            ([x0 + e2 - 1, box[3] - 1, x1 - e2 + 1, y1], None),
+            ([x0, y1 - e2, x0 + e2, y1], 3)]
 
 
 def bereinigen(text):
@@ -798,6 +814,8 @@ class Importer:
                    "shadingOffsets": [0, 0, 0, 0], "shadingCorners": R(9), "shadingTint": 1,
                    "shadingSpeckleColor": "Papier", "shadingSpeckleTint": 1}
         fl_chars = {"size": 1, "leading": {"kind": "points", "value": H}}
+        # Der Schatten besteht aus fünf Teilen am sichtbaren Rand (schatten_teile); jedes bekommt seine
+        # Höhe und seine runde Ecke als eigene Einstellung.
         s("style.paragraph.create", name="Spalte Schatten", chars=fl_chars,
           para={**flaeche, "shadingColor": "Spalte · Schatten", "shadingSpeckle": float(self.stil.get("sprenkel", {}).get("rahmen", 1.0))})
         if self.dok is None:
@@ -863,12 +881,16 @@ class Importer:
             im.convert("RGB").save(pfad)
         return pfad
 
-    def flaeche(self, spread, rect, stil):
-        """Eine Fläche als Absatzschattierung eines leeren Textrahmens (füllt den Rahmen ganz aus)."""
+    def flaeche(self, spread, rect, stil, ecke=None):
+        """Eine Fläche als Absatzschattierung eines leeren Textrahmens (füllt den Rahmen ganz aus): so
+        hoch wie der Rahmen (Zeilenabstand), rund nur an der Ecke `ecke` (0 oben links … 3 unten links)."""
         f = self.s("frame.create", spread=spread, rect=rect, content="text", text="\u00a0")
         self.s("object.textFrameOptions", inset=0, firstBaseline="leading", ids=[f"${f}.id"])
         self.s("text.select", story=f"${f}.story", anchor=0, focus=2)
         self.s("style.paragraph.apply", name=stil)
+        self.s("type.char", attrs={"leading": {"kind": "points", "value": round(rect[3] - rect[1], 3)}})
+        rund = {"shape": "rounded", "size": ECKE}
+        self.s("type.para", attrs={"shadingCorners": [rund if i == ecke else {"shape": "none", "size": 0} for i in range(4)]})
         self.s("object.label", label=stil, ids=[f"${f}.id"])
 
     def mustervorlage(self):
@@ -883,7 +905,8 @@ class Importer:
                 # Riso-Schatten: ein blauer Farbauftrag, leicht versetzt, mit kräftigem Papier-Korn
                 # (Absatzschattierung in einem leeren Textrahmen, damit Farben und Korn Farbfelder bleiben)
                 r = [box[0] + SCHATTEN_VERSATZ, box[1] + SCHATTEN_VERSATZ, box[2] + SCHATTEN_VERSATZ, box[3] + SCHATTEN_VERSATZ]
-                self.flaeche(spread, r, "Spalte Schatten")
+                for teil, ecke in schatten_teile(box):
+                    self.flaeche(spread, teil, "Spalte Schatten", ecke=ecke)
                 self.rauschen(spread, r, "rahmen")
                 i = self.s("frame.create", spread=spread, rect=box, content="unassigned")
                 ids = [f"${i}.id"]

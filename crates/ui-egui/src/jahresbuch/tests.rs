@@ -229,3 +229,88 @@ fn fortsetzen_haengt_an_und_neu_aufbauen_ersetzt() {
     let danach = modell::chats(&app.session.active().unwrap().doc, &Default::default());
     assert_eq!((&danach[0].von, &danach[0].bis), (&gespeichert[0].von, &gespeichert[0].bis), "der Chat umfasst weiter beide Zeiträume");
 }
+
+/// Der Schatten der Spalten-Box besteht aus zwei schmalen Streifen (nur der sichtbare Rand). Ein
+/// großer Schatten von früher wird beim nächsten Gestalten durch sie ersetzt; die Auswahl bleibt.
+#[test]
+fn der_spalten_schatten_ist_nur_der_sichtbare_rand() {
+    let Some((export, medien)) = export() else { return };
+    let mut app = app_mit(1);
+    einfuegen(&mut app, &export, &medien);
+    let schatten = |app: &DesignApp| -> Vec<(u64, f64)> {
+        let doc = &app.session.active().unwrap().doc;
+        let k = doc.parents.iter().position(|p| p.parent.as_ref().is_some_and(|i| i.label() == "J-Chat")).unwrap();
+        doc.parents[k]
+            .items
+            .iter()
+            .filter(|it| it.label.starts_with("Spalte Schatten"))
+            .map(|it| (it.id.0, it.bounds().width().min(it.bounds().height())))
+            .collect()
+    };
+    let neu = schatten(&app);
+    assert!(!neu.is_empty() && neu.iter().all(|(_, schmal)| *schmal < 20.0), "nur schmale Streifen: {neu:?}");
+    // Ein großer Schatten wie in älteren Büchern.
+    let k = app.session.active().unwrap().doc.parents.iter().position(|p| p.parent.as_ref().is_some_and(|i| i.label() == "J-Chat")).unwrap();
+    let gross = app
+        .run("frame.create", json!({"spread": {"kind": "parent", "index": k}, "rect": [100, 100, 300, 600], "content": "text", "text": "x"}))
+        .unwrap()["id"]
+        .clone();
+    app.run("object.label", json!({"label": "Spalte Schatten", "ids": [gross]})).unwrap();
+    app.run("selection.set", json!({"ids": []})).unwrap();
+    super::befehl_gestalten(&mut app, &json!({"chat": 1, "stil": {"korn_blasen": 0.5}})).unwrap();
+    let danach = schatten(&app);
+    assert!(!danach.iter().any(|(id, _)| json!(id) == gross), "der große Schatten ist weg");
+    assert_eq!(danach.len(), neu.len() + 5, "an seiner Stelle die fünf Teile am Rand");
+    assert!(danach.iter().all(|(_, schmal)| *schmal < 20.0));
+    assert!(app.session.active().unwrap().selection.is_empty(), "die Auswahl ist wie vorher");
+}
+
+/// Ein Buch von früher: der Schatten der Spalten-Box als große Fläche unter der Papierfläche, auf
+/// der unteren von zwei Ebenen, während die obere aktiv ist. Beim Gestalten wird er zu den Teilen am
+/// sichtbaren Rand: sie decken jeden Punkt, an dem der Schatten zu sehen war, liegen auf seiner
+/// Ebene unter der Papierfläche, und die Auswahl bleibt.
+#[test]
+fn ein_alter_spalten_schatten_wird_zum_sichtbaren_rand() {
+    let mut app = app_mit(1);
+    app.run("style.paragraph.create", json!({"name": "Chat Sie"})).unwrap();
+    app.run("swatch.create", json!({"name": "Spalte · Schatten", "color": "#3554E0"})).unwrap();
+    let rund = json!({"shape": "rounded", "size": 9});
+    let para = json!({"shadingOn": true, "shadingColor": "Spalte · Schatten", "shadingWidth": "column", "shadingTop": "leading", "shadingBottom": "descent", "shadingCorners": [rund, rund, rund, rund], "shadingSpeckle": 1.0, "shadingSpeckleColor": "[Paper]"});
+    app.run(
+        "style.paragraph.create",
+        json!({"name": "Spalte Schatten", "chars": {"size": 1, "leading": {"kind": "points", "value": 300}}, "para": para}),
+    )
+    .unwrap();
+    app.run("layout.parents.new", json!({"prefix": "J", "name": "Chat"})).unwrap();
+    let k = app.session.active().unwrap().doc.parents.iter().position(|p| p.parent.as_ref().is_some_and(|i| i.label() == "J-Chat")).unwrap();
+    let auf = json!({"kind": "parent", "index": k});
+    // Papierfläche [100,100,300,400], Schatten 4 pt nach rechts unten, darunter.
+    let alt = app.run("frame.create", json!({"spread": auf, "rect": [104, 104, 304, 404], "content": "text", "text": "\u{a0}"})).unwrap();
+    app.run("object.textFrameOptions", json!({"inset": 0, "firstBaseline": "leading", "ids": [alt["id"]]})).unwrap();
+    app.run("text.select", json!({"story": alt["story"], "anchor": 0, "focus": 2})).unwrap();
+    app.run("style.paragraph.apply", json!({"name": "Spalte Schatten"})).unwrap();
+    app.run("object.label", json!({"label": "Spalte Schatten", "ids": [alt["id"]]})).unwrap();
+    let papier = app.run("frame.create", json!({"spread": auf, "rect": [100, 100, 300, 400], "content": "unassigned"})).unwrap()["id"].clone();
+    let ebene = app.session.active().unwrap().doc.item(designcraft_doc::ItemId(papier.as_u64().unwrap())).unwrap().layer;
+    app.run("layer.new", json!({"name": "Oben"})).unwrap();
+    let textrahmen = app.run("frame.create", json!({"spread": 0, "rect": [50, 50, 150, 150], "content": "text", "text": "x"})).unwrap()["id"].clone();
+    app.run("selection.set", json!({"ids": [textrahmen]})).unwrap();
+    let vorher = app.session.active().unwrap().selection.clone();
+    super::befehl_gestalten(&mut app, &json!({"chat": 1, "stil": {"korn_blasen": 0.5}})).unwrap();
+    let st = app.session.active().unwrap();
+    let items = &st.doc.parents[k].items;
+    let stelle = |id: &Value| items.iter().position(|it| json!(it.id.0) == *id);
+    assert_eq!(stelle(&alt["id"]), None, "der große Schatten ist weg");
+    let teile: Vec<_> = items.iter().filter(|it| it.label == "Spalte Schatten").collect();
+    assert_eq!(teile.len(), 5);
+    let p = stelle(&papier).unwrap();
+    assert!(
+        teile.iter().all(|t| t.layer == ebene && items.iter().position(|it| it.id == t.id).unwrap() < p),
+        "auf der Ebene des alten Schattens, unter der Papierfläche"
+    );
+    // Punkte, an denen der alte Schatten zu sehen war: rechte und untere Kante, die drei runden Ecken.
+    for (x, y) in [(302.0, 250.0), (200.0, 402.0), (302.0, 112.0), (301.0, 401.0), (110.0, 402.0)] {
+        assert!(teile.iter().any(|t| t.bounds().contains(designcraft_geom::Point::new(x, y))), "({x}, {y}) ist abgedeckt");
+    }
+    assert_eq!(st.selection, vorher, "die Auswahl ist wie vorher");
+}

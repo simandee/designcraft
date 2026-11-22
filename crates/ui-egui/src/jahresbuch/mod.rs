@@ -141,6 +141,9 @@ pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String>
     app.end_live_preview();
     let doc = app.session.active().map(|st| st.doc.clone()).ok_or("kein Dokument")?;
     let mut befehle = gestaltung::geaenderte_befehle(&doc, im_etikett.then_some(&alt), &chat);
+    if let Some(st) = app.session.active() {
+        gestaltung::schatten_umbauen(&doc, &chats, &st.selection, &mut befehle);
+    }
     befehle.push(modell::speichern(&chats));
     skript(app, gestaltung::als_skript(&befehle))?;
     serde_json::to_value(&chat).map_err(|e| e.to_string())

@@ -209,8 +209,10 @@ fn als_ein_schritt<T>(app: &mut DesignApp, label: &str, f: impl FnOnce(&mut Desi
 /// Die Gestaltung von `chat` anwenden und `chats` (mit ihm) im Dokument speichern, als ein
 /// Rückgängig-Schritt.
 fn speichern_und_gestalten(app: &mut DesignApp, chats: &[Chat], chat: &Chat) -> Result<(), String> {
-    let doc = app.session.active().map(|st| st.doc.clone()).ok_or("kein Dokument")?;
+    let st = app.session.active().ok_or("kein Dokument")?;
+    let doc = st.doc.clone();
     let mut befehle = gestaltung::befehle(&doc, chat);
+    gestaltung::schatten_umbauen(&doc, chats, &st.selection, &mut befehle);
     befehle.push(modell::speichern(chats));
     skript(app, gestaltung::als_skript(&befehle)).map(|_| ())
 }
@@ -319,7 +321,12 @@ fn fortsetzen_schritt(app: &mut DesignApp, a: &Auftrag, chat: &Chat, wohin: Wohi
     }
     // Nur das Etikett: die Gestaltung steht schon in den Formaten (neue baut das Hilfsprogramm aus
     // ihr), und eigene Anpassungen an den Formaten bleiben so, wie sie sind.
-    skript(app, gestaltung::als_skript(&[modell::speichern(&chats)]))?;
+    let mut befehle = Vec::new();
+    if let Some(st) = app.session.active() {
+        gestaltung::schatten_umbauen(&st.doc, &chats, &st.selection, &mut befehle);
+    }
+    befehle.push(modell::speichern(&chats));
+    skript(app, gestaltung::als_skript(&befehle))?;
     app.status(if matches!(wohin, Wohin::Ersetzen(_)) { "Jahresbuch: Chat neu aufgebaut." } else { "Jahresbuch: Chat fortgesetzt." });
     Ok(chat)
 }

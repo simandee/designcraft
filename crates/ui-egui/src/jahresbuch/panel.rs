@@ -496,6 +496,8 @@ pub(super) fn anwenden(app: &mut DesignApp, alle: &[Chat], chat: &Chat) {
         .find(|c| c.nummer == chat.nummer)
         .filter(|_| modell::im_etikett(&basis, chat.nummer));
     let mut befehle = g::geaenderte_befehle(&basis, alt.as_ref(), chat);
+    let auswahl = st.interaction.as_ref().map_or_else(|| st.selection.clone(), |i| i.selection.clone());
+    g::schatten_umbauen(&basis, alle, &auswahl, &mut befehle);
     let neu: Vec<Chat> = alle.iter().map(|c| if c.nummer == chat.nummer { chat.clone() } else { c.clone() }).collect();
     befehle.push(modell::speichern(&neu));
     app.live_preview("Chat-Gestaltung", "script.run", json!({"text": g::als_skript(&befehle)}));

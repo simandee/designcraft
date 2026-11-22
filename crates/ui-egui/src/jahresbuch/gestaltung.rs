@@ -267,3 +267,83 @@ fn mit_namen(doc: &Document, label: &str) -> Vec<Value> {
 pub fn als_skript(befehle: &[Value]) -> String {
     befehle.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")
 }
+
+/// Rundung und Versatz des Spaltenbox-Schattens, wie im Hilfsprogramm (`ECKE`, `SCHATTEN_VERSATZ`).
+const ECKE: f64 = 9.0;
+const VERSATZ: f64 = 4.0;
+
+/// Der sichtbare Rand eines Spaltenbox-Schattens `s` (die Papierfläche liegt um den Versatz links
+/// oben darüber): (Rechteck, runde Ecke 0–3), wie `schatten_teile` im Hilfsprogramm. Drei Eckstücke,
+/// groß genug für die ganze Rundung, und dazwischen die rechte und die untere Kante.
+fn schatten_teile(s: designcraft_geom::Rect) -> [([f64; 4], Option<usize>); 5] {
+    let e2 = 2.0 * ECKE;
+    let (bx1, by1) = (s.x1 - VERSATZ, s.y1 - VERSATZ);
+    [
+        ([s.x1 - e2, s.y0, s.x1, s.y0 + e2], Some(1)),
+        ([bx1 - 1.0, s.y0 + e2 - 1.0, s.x1, s.y1 - e2 + 1.0], None),
+        ([s.x1 - e2, s.y1 - e2, s.x1, s.y1], Some(2)),
+        ([s.x0 + e2 - 1.0, by1 - 1.0, s.x1 - e2 + 1.0, s.y1], None),
+        ([s.x0, s.y1 - e2, s.x0 + e2, s.y1], Some(3)),
+    ]
+}
+
+/// Chats von vor dem 22.11.2026 haben als Schatten der Spalten-Box eine große Fläche voller
+/// Sprenkel, die fast ganz unter der Papierfläche liegt: unsichtbar, aber Megabytes im PDF. Diese
+/// Befehle (an `out` angehängt, ihre Verweise zählen ab dort) ersetzen sie in allen `chats` durch
+/// die Teile am sichtbaren Rand, wie das Hilfsprogramm sie heute anlegt: auf derselben Ebene, an
+/// derselben Stelle im Stapel. Im Bild ändert sich nichts; die Auswahl ist danach wie vorher.
+pub fn schatten_umbauen(doc: &Document, chats: &[Chat], auswahl: &designcraft_doc::Selection, out: &mut Vec<Value>) {
+    let befehl = |command: &str, params: Value| json!({"command": command, "params": params});
+    let mut weg: Vec<(u64, Option<designcraft_doc::StoryId>)> = Vec::new();
+    for chat in chats {
+        let stil = chat.stil_name("Spalte Schatten");
+        let vorlage = chat.vorlage();
+        let (Some(k), true) = (
+            doc.parents.iter().position(|p| p.parent.as_ref().is_some_and(|i| i.label() == vorlage)),
+            doc.styles.paragraph.iter().any(|s| s.name == stil),
+        ) else {
+            continue;
+        };
+        let label = chat.farb_name("Spalte Schatten");
+        // Ausgeblendete oder nicht druckende alte Schatten kommen nicht ins PDF: sie bleiben.
+        let alt = doc.parents[k].items.iter().filter(|it| it.label == label && !it.hidden && !it.nonprinting).filter(|it| {
+            let r = it.bounds();
+            r.width().min(r.height()) > 2.0 * ECKE + 1.0
+        });
+        for it in alt {
+            for (rect, ecke) in schatten_teile(it.bounds()) {
+                let f = out.len();
+                let id = format!("${f}.id");
+                let rund = |i: usize| if ecke == Some(i) { json!({"shape": "rounded", "size": ECKE}) } else { json!({"shape": "none", "size": 0}) };
+                out.push(befehl(
+                    "frame.create",
+                    json!({"spread": {"kind": "parent", "index": k}, "rect": rect, "content": "text", "text": "\u{a0}"}),
+                ));
+                out.push(befehl("object.textFrameOptions", json!({"inset": 0, "firstBaseline": "leading", "ids": [id]})));
+                out.push(befehl("text.select", json!({"story": format!("${f}.story"), "anchor": 0, "focus": 2})));
+                out.push(befehl("style.paragraph.apply", json!({"name": stil})));
+                out.push(befehl("type.char", json!({"attrs": {"leading": {"kind": "points", "value": rect[3] - rect[1]}}})));
+                out.push(befehl("type.para", json!({"attrs": {"shadingCorners": [rund(0), rund(1), rund(2), rund(3)]}})));
+                out.push(befehl("object.label", json!({"label": label, "ids": [id]})));
+                // Auf die Ebene und die Stelle des alten Schattens (unter Rauschen und Papierfläche).
+                out.push(befehl("object.reorder", json!({"ids": [id], "below": it.id.0})));
+            }
+            weg.push((it.id.0, it.text_frame().map(|t| t.story)));
+        }
+    }
+    if weg.is_empty() {
+        return;
+    }
+    out.push(befehl("edit.clear", json!({"ids": weg.iter().map(|w| w.0).collect::<Vec<_>>()})));
+    // Die Auswahl wie vorher (Text im Text eines gelöschten Schattens oder in einer Tabellenzelle: keine).
+    let geloescht = |sid: designcraft_doc::StoryId| weg.iter().any(|w| w.1 == Some(sid));
+    out.push(match (&auswahl.text, auswahl.inline_object()) {
+        (Some(t), _) if t.cell.is_none() && !geloescht(t.story) => befehl("text.select", json!({"story": t.story.0, "anchor": t.anchor, "focus": t.focus})),
+        (Some(_), _) => befehl("selection.set", json!({"ids": []})),
+        (None, Some(i)) => befehl("selection.set", json!({"inline": {"story": i.story.0, "index": i.index, "content": i.content}})),
+        (None, None) => befehl(
+            "selection.set",
+            json!({"ids": auswahl.items.iter().map(|i| i.0).filter(|i| !weg.iter().any(|w| w.0 == *i)).collect::<Vec<_>>(), "content": auswahl.content}),
+        ),
+    });
+}
