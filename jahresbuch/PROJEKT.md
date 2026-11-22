@@ -156,9 +156,12 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
   Rückgängig-Schritt. Kein Vorschau-Haken/OK mehr.
 - **Mehrere Chats je Buch, jeder mit eigenem Look:** je Chat eigene Formate und Farbfelder (z. B.
   Gruppe „Chat 2“) und eigene Chat-Mustervorlage (Spalten-Box in seinen Farben).
-- **Gruppenchats kommen vor:** mehr als zwei Personen → Farben/Seiten für die anderen klären
-  (Vorschlag noch offen: Ich rechts, alle anderen links, je eigene Farbe, Name über der Blase wie
-  bei WhatsApp-Gruppen). **Vor dem Bauen mit dem User klären.**
+- **Gruppenchats kommen vor:** Ich rechts, alle anderen links, **Name über jeder Blase in der Farbe
+  der Person** (so hat der User es früher in InDesign gemacht: andere Blasen alle gleich hellgrau,
+  eigene grün, Namen je Person farbig). Varianten für den Riso-Look, beim Bauen als Bild
+  nebeneinander zeigen und den User wählen lassen: A alle Blasen gleich hell, Schatten gleich;
+  B Blasen gleich hell, **Schatten in Personenfarbe** (Favorit von Claude); C Blase heller Ton der
+  Personenfarbe. Personenfarben im Jahresbuch-Fenster einzeln einstellbar.
 - **Chat fortsetzen** (gewünscht): weiteren Zeitraum hinten an einen bestehenden Chat anhängen,
   ohne Vorhandenes (Handarbeit) anzufassen.
 - **Bereich neu aufbauen** (ok): einen Zeitraum neu einfügen, mit Warnung (Handarbeit dort geht
