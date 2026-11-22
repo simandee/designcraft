@@ -264,7 +264,8 @@ Gedruckt wird bei **WIRmachenDRUCK (CMYK)**: jede Fläche bekommt einen festen C
   `crates/compose/src/pagenum.rs` (Ziffern als Flächen, Überschneidungen, Farben),
   `crates/engine/src/cmd/pagenum.rs` (Befehle `pageNumbers.settings/setDesign/deleteDesign/reroll/assign`),
   Fenster `crates/ui-egui/src/page_numbers/` (Befehl `app.pageNumbersPanel {tab, design}`).
-- Noch offen: im PDF sind die Ziffern Flächen (für Suche/Vorlesen fehlt noch unsichtbarer Text).
+- Im PDF sind die Ziffern farbige Flächen im festen CMYK (als Seitenschmuck markiert, wie Seitenzahlen
+  üblich: nicht durchsuchbar/vorgelesen – mit dem User am 22.11.2026 so belassen).
 
 ## Gemerkt für später (dem User von sich aus wieder vorschlagen)
 

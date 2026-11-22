@@ -246,8 +246,10 @@ fn raster(area: Rect, shape: Dot, pitch: f64, size: f32, angle: f32) -> BezPath 
                 for i in -r..=r {
                     let (x, y) = (c.x + f64::from(i) * pitch, c.y + f64::from(j) * pitch);
                     if shape == Dot::Round {
-                        let pts: Vec<(f64, f64)> =
-                            (0..12).map(|a| f64::from(a) * std::f64::consts::TAU / 12.0).map(|a| (x + s / 2.0 * a.cos(), y + s / 2.0 * a.sin())).collect();
+                        let pts: Vec<(f64, f64)> = (0..12)
+                            .map(|a| f64::from(a) * std::f64::consts::TAU / 12.0)
+                            .map(|a| (x + s / 2.0 * a.cos(), y + s / 2.0 * a.sin()))
+                            .collect();
                         add(&pts);
                     } else {
                         let (a, b) = (s / 2.0, s / 6.0);
@@ -310,7 +312,8 @@ fn cmyk(c: Cmyk) -> Color {
 
 /// A display colour as print CMYK (the working CMYK space).
 fn print(rgb: [f32; 3]) -> Color {
-    let [c, m, y, k] = Color::rgb(rgb[0].clamp(0.0, 1.0), rgb[1].clamp(0.0, 1.0), rgb[2].clamp(0.0, 1.0)).to_cmyk_managed(Intent::RelativeColorimetric);
+    let [c, m, y, k] =
+        Color::rgb(rgb[0].clamp(0.0, 1.0), rgb[1].clamp(0.0, 1.0), rgb[2].clamp(0.0, 1.0)).to_cmyk_managed(Intent::RelativeColorimetric);
     Color::cmyk(c, m, y, k)
 }
 
@@ -365,7 +368,9 @@ fn fill(design: &Design, mix: &Mix, members: &[usize], top: usize, set: u8) -> F
             print(from_oklab(lab))
         }
         Mix::Light { strength, glow, glow_color } => {
-            let s = rgbs.iter().fold([0.0f32; 3], |a, c| [1.0 - (1.0 - a[0]) * (1.0 - c[0]), 1.0 - (1.0 - a[1]) * (1.0 - c[1]), 1.0 - (1.0 - a[2]) * (1.0 - c[2])]);
+            let s = rgbs
+                .iter()
+                .fold([0.0f32; 3], |a, c| [1.0 - (1.0 - a[0]) * (1.0 - c[0]), 1.0 - (1.0 - a[1]) * (1.0 - c[1]), 1.0 - (1.0 - a[2]) * (1.0 - c[2])]);
             let c = lerp3(top_rgb, s, strength.clamp(0.0, 1.0));
             print(lerp3(c, cmyk(*glow_color).to_rgb(), glow.clamp(0.0, 1.0)))
         }
@@ -512,7 +517,14 @@ pub(crate) fn apply(doc: &Document, story: &Story, out: &mut ComposedStory, db: 
                 }
                 for s in l.shapes {
                     let path = at * s.path;
-                    ft.decos.push(Deco { rect: path.bounding_box(), path: Some(path), tint: 1.0, value: Some(s.color), page_number: true, ..Deco::default() });
+                    ft.decos.push(Deco {
+                        rect: path.bounding_box(),
+                        path: Some(path),
+                        tint: 1.0,
+                        value: Some(s.color),
+                        page_number: true,
+                        ..Deco::default()
+                    });
                 }
             }
         }

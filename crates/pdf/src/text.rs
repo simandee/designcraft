@@ -283,7 +283,7 @@ impl Exporter<'_> {
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }
-                if let Some(c) = me.swatch_color(&d.color, d.tint) {
+                if let Some(c) = me.deco_color(d) {
                     match (&d.path, d.speck_path(None)) {
                         (Some(p), _) => me.fill_path(s, p, c),
                         (None, Some(p)) => me.fill_path(s, &p, c),
@@ -326,7 +326,7 @@ impl Exporter<'_> {
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }
-                if let Some(c) = me.swatch_color(&d.color, d.tint) {
+                if let Some(c) = me.deco_color(d) {
                     match (&d.path, d.speck_path(None)) {
                         (Some(p), _) => me.fill_path(s, p, c),
                         (None, Some(p)) => me.fill_path(s, &p, c),

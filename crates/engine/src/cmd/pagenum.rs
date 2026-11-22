@@ -87,14 +87,22 @@ pub fn specs() -> Vec<CommandSpec> {
                 })
             }
         ),
-        cmd!("pageNumbers.deleteDesign", "Delete Page Number Design", [], None, "{name} — the design and the style links to it go", has_doc, |s, p| {
-            let name = str_param(p, "name").ok_or_else(|| bad("pageNumbers.deleteDesign", "`name` required"))?.to_string();
-            change(s, |set| {
-                set.designs.retain(|d| d.name != name);
-                set.styles.retain(|_, d| *d != name);
-                Ok(json!({"name": name}))
-            })
-        }),
+        cmd!(
+            "pageNumbers.deleteDesign",
+            "Delete Page Number Design",
+            [],
+            None,
+            "{name} — the design and the style links to it go",
+            has_doc,
+            |s, p| {
+                let name = str_param(p, "name").ok_or_else(|| bad("pageNumbers.deleteDesign", "`name` required"))?.to_string();
+                change(s, |set| {
+                    set.designs.retain(|d| d.name != name);
+                    set.styles.retain(|_, d| *d != name);
+                    Ok(json!({"name": name}))
+                })
+            }
+        ),
         cmd!(
             "pageNumbers.reroll",
             "Reroll Page Number",
@@ -107,7 +115,8 @@ pub fn specs() -> Vec<CommandSpec> {
                 let page = str_param(p, "page").ok_or_else(|| bad("pageNumbers.reroll", "`page` required"))?.to_string();
                 let reset = p.get("reset").and_then(Value::as_bool).unwrap_or(false);
                 change(s, |set| {
-                    let d = set.designs.iter_mut().find(|d| d.name == name).ok_or_else(|| bad("pageNumbers.reroll", format!("no design `{name}`")))?;
+                    let d =
+                        set.designs.iter_mut().find(|d| d.name == name).ok_or_else(|| bad("pageNumbers.reroll", format!("no design `{name}`")))?;
                     let n = if reset {
                         d.rerolls.remove(&page);
                         0
@@ -139,7 +148,10 @@ pub fn specs() -> Vec<CommandSpec> {
                     None => marker_styles(&s.doc()?.doc).into_iter().map(|(n, _)| n).collect(),
                 };
                 if styles.is_empty() {
-                    return Err(bad("pageNumbers.assign", "the document has no Current Page Number marker (Type › Insert Special Character › Markers)"));
+                    return Err(bad(
+                        "pageNumbers.assign",
+                        "the document has no Current Page Number marker (Type › Insert Special Character › Markers)",
+                    ));
                 }
                 // Markers without a character style get one, so the design has a style to hang on.
                 if styles.iter().any(|n| !has_style(n)) {
@@ -223,6 +235,22 @@ mod tests {
         assert_eq!(page_number_decos(&s, sid), 0, "unlinked: ordinary text again");
         s.execute("edit.undo", &json!({})).unwrap();
         assert!(page_number_decos(&s, sid) >= 3, "undone");
+    }
+
+    /// The plates' own (mixed) colours reach the PDF: each digit and overlap is a filled shape.
+    #[test]
+    fn the_pdf_gets_the_plates_in_their_colours() {
+        let (mut s, _) = page_with_number();
+        let fills = |s: &Session| {
+            let opts = designcraft_pdf::PdfOptions { compress: false, ..Default::default() };
+            let pdf = designcraft_pdf::export_pdf(&s.doc().unwrap().doc, &s.cache, &opts).unwrap();
+            let t = String::from_utf8_lossy(&pdf).to_string();
+            t.matches(" k ").count() + t.matches(" k\n").count()
+        };
+        let plain = fills(&s);
+        s.execute("pageNumbers.setDesign", &json!({"design": {"name": "Riso", "mix": {"mode": "multiply", "strength": 1.0}}})).unwrap();
+        s.execute("pageNumbers.assign", &json!({"design": "Riso"})).unwrap();
+        assert!(fills(&s) >= plain + 3, "{} CMYK fills with the design, {plain} without", fills(&s));
     }
 
     #[test]
