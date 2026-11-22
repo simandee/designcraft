@@ -161,7 +161,8 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
   eigene grün, Namen je Person farbig). Varianten für den Riso-Look, beim Bauen als Bild
   nebeneinander zeigen und den User wählen lassen: A alle Blasen gleich hell, Schatten gleich;
   B Blasen gleich hell, **Schatten in Personenfarbe** (Favorit von Claude); C Blase heller Ton der
-  Personenfarbe. Personenfarben im Jahresbuch-Fenster einzeln einstellbar.
+  Personenfarbe. Personenfarben im Jahresbuch-Fenster einzeln einstellbar. Der **Name** hat die **gleiche
+  Schriftgröße wie der Nachrichtentext** (wächst mit dem Regler mit) und ist **SemiBold**.
 - **Chat fortsetzen** (gewünscht): weiteren Zeitraum hinten an einen bestehenden Chat anhängen,
   ohne Vorhandenes (Handarbeit) anzufassen.
 - **Bereich neu aufbauen** (ok): einen Zeitraum neu einfügen, mit Warnung (Handarbeit dort geht
