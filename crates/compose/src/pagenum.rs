@@ -273,6 +273,29 @@ fn raster(area: Rect, shape: Dot, pitch: f64, size: f32, angle: f32) -> BezPath 
     out
 }
 
+/// The colour overlap `set` shows (bit 0 hundreds, 1 tens, 2 ones; one bit: that plate's ink),
+/// `None` for paper. A raster shows as its inks overprinted, a cut knockout as the top ink.
+pub fn region_color(design: &Design, set: u8) -> Option<Color> {
+    let members: Vec<usize> = (0..3).filter(|p| set >> p & 1 == 1).collect();
+    let first = *members.first()?;
+    if members.len() == 1 {
+        return Some(cmyk(design.inks[first]));
+    }
+    let order = paint_order(design.top);
+    let top = *order.iter().rev().find(|p| members.contains(p)).unwrap_or(&first);
+    if let Mix::Knockout { cut: true, .. } = design.mix {
+        return Some(cmyk(design.inks[top]));
+    }
+    match fill(design, &design.mix, &members, top, set) {
+        Fill::Paper => None,
+        Fill::Color(c) => Some(c),
+        Fill::Halftone { .. } => match fill(design, &Mix::Overprint { ink_limit: 3.0, opacity: 1.0 }, &members, top, set) {
+            Fill::Color(c) => Some(c),
+            _ => None,
+        },
+    }
+}
+
 // --- colour ------------------------------------------------------------------------------------
 
 enum Fill {

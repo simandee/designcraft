@@ -37,6 +37,7 @@ mod object_control;
 pub mod object_style_dialog;
 pub mod package_dialog;
 pub mod jahresbuch;
+pub mod page_numbers;
 mod page_history;
 mod panel_docking;
 pub mod panels;
@@ -260,6 +261,7 @@ pub struct DesignApp {
     pub native_menu: bool,
     /// Das Jahresbuch-Fenster: was es sich zwischen den Bildern merkt.
     pub(crate) jahresbuch: jahresbuch::panel::Zustand,
+    pub(crate) page_numbers: page_numbers::State,
     /// The commands the native menu bar gives a key equivalent, with that shortcut: the egui
     /// shortcut handler leaves that key to the bar and runs the command's other bindings itself.
     pub native_shortcuts: std::collections::HashMap<String, String>,

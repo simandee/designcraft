@@ -66,6 +66,12 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
         None,
         "{chat?, name?, stil?, personen?} — Jahresbuch: without params, shows the Jahresbuch panel; with chat (its number), changes that chat's name, look (stil: keys as in stil.json, merged) and person colours (personen: {key: colour}); returns the chat",
     ),
+    (
+        "app.pageNumbersPanel",
+        "Page Numbers",
+        None,
+        "{tab?: shape|colors|mixing, design?: name} — shows the Page Numbers panel (layered page number designs) at that tab and design; the designs themselves change with the pageNumbers.* commands",
+    ),
     ("app.exportPng", "Export Page as PNG…", Some("Cmd+E"), "{}"),
     ("app.exportIdml", "Export IDML…", None, "{path?} — InDesign Markup (IDML) package"),
     (

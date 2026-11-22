@@ -1236,6 +1236,12 @@ fn paint_text(pen: &mut Pen, name: &str) -> bool {
         "format-container" => pen.rect(4.0, 4.0, 16.0, 16.0),
         "format-text" => pen.text(10.0, 10.5, "T", 15.0),
         "panel-jahresbuch" => sprechblasen(pen, 2.5),
+        "panel-page-numbers" => {
+            // Two overlapping figures: an 0 and a 7 laid over it.
+            pen.w = 1.3;
+            pen.circle(8.0, 10.5, 5.0);
+            pen.line(&[(9.5, 5.0), (17.5, 5.0), (12.5, 17.0)]);
+        }
         "panel-datamerge" => {
             pen.w = 1.2;
             pen.rect(3.0, 2.0, 17.0, 18.0);

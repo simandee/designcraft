@@ -1276,6 +1276,7 @@ fn floating_size(panel: &str) -> egui::Vec2 {
         "glyphs" | "library" | "links" | "preflight" | "dataMerge" => egui::vec2(320.0, 400.0),
         // Long, with collapsible sections: as tall as most screens allow.
         "jahresbuch" => egui::vec2(300.0, 760.0),
+        "pageNumbers" => egui::vec2(300.0, 860.0),
         _ => egui::vec2(280.0, 360.0),
     }
 }
