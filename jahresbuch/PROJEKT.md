@@ -171,9 +171,10 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
   Schriftgröße im Eigenschaften-Fenster); Abstände = ▲▼-Feld in pt; Korn/Rauschen = %-Feld mit
   ›-Knopf, der einen Regler aufklappt (wie Deckkraft); Farben = Farbfelder. Abschnitte **einklappbar**
   mit Dreieck (wie Fenster Typografie): Personen, Schrift, Abstände, Korn und Rauschen, Chat.
-  Ansicht „Neuer Chat“: Export + Wählen, Medienordner, Auswahl des Chats im Export, Zeitraum Von/Bis
-  mit **eigenem Monatskalender** (aufklappbar, Knöpfe „Ganzer Monat“, „Heute“; Datum über chrono,
-  keine neue Bibliothek), Anzahl Nachrichten/Fotos, „Aussehen wie Chat …“/Standard, Ziel, Knopf.
+  Ansicht „Neuer Chat“: Export + Wählen, Medienordner, Auswahl des Chats im Export, **ein** Feld „Zeitraum“
+  mit **Zeitraum-Kalender wie bei Buchungsseiten** (Entwurf 5: 1. Klick Anfang, 2. Klick Ende, Tage
+  dazwischen als Band, Monate mit ‹ › blättern, Knöpfe „Ganzer Monat“, „Ganzes Jahr“; Datum über
+  chrono, keine neue Bibliothek), Anzahl Nachrichten/Fotos, „Aussehen wie Chat …“/Standard, Ziel, Knopf.
   Ansicht „Chat“: **Name des Chats editierbar**, Zeitraum/Anzahl, dann die Abschnitte; unten Knöpfe
   „Fortsetzen …“ und „Neu aufbauen …“. ☰-Menü des Fensters: **„Neuen Chat einfügen …“**.
   Zahlenfelder sollen **„8,4“ mit Komma** verstehen (DesignCraft kann bisher nur Punkt → in
