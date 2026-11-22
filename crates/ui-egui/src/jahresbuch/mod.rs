@@ -69,7 +69,7 @@ pub fn skript(app: &mut DesignApp, text: String) -> Result<Value, String> {
     Ok(r)
 }
 
-/// Das Jahresbuch-Fenster zeigen (Menü Jahresbuch); `neu`: mit der Ansicht „Neuer Chat“, auch
+/// Das Jahresbuch-Fenster zeigen; `neu`: mit der Ansicht „Neuer Chat“, auch
 /// wenn ein Chat markiert ist.
 pub fn zeigen(app: &mut DesignApp, neu: bool) -> Result<Value, String> {
     app.jahresbuch.neu_anzeigen = neu;
@@ -79,7 +79,7 @@ pub fn zeigen(app: &mut DesignApp, neu: bool) -> Result<Value, String> {
     Ok(Value::Null)
 }
 
-/// Jahresbuch › WhatsApp-Chat einfügen …: ohne Angaben das Fenster mit „Neuer Chat“; mit
+/// Befehl jahresbuch.chatImport: ohne Angaben das Fenster mit „Neuer Chat“; mit
 /// `export` (Automatik) fügt es den Chat gleich ein und gibt seine Nummer zurück.
 pub fn befehl_einfuegen(app: &mut DesignApp, p: &Value) -> Result<Value, String> {
     let Some(export) = p.get("export").and_then(Value::as_str) else { return zeigen(app, true) };
@@ -104,7 +104,7 @@ pub fn befehl_einfuegen(app: &mut DesignApp, p: &Value) -> Result<Value, String>
     serde_json::to_value(&chat).map_err(|e| e.to_string())
 }
 
-/// Jahresbuch › Chat-Gestaltung …: ohne Angaben das Fenster (und die Chats des Dokuments); mit
+/// Befehl jahresbuch.chatDesign: ohne Angaben das Fenster (und die Chats des Dokuments); mit
 /// `chat` (Nummer) ändert es Name, Gestaltung (`stil`, wie in stil.json, ergänzt) und Farben der
 /// Personen (`personen`: {key: Farbe}) dieses Chats, als ein Rückgängig-Schritt.
 pub fn befehl_gestalten(app: &mut DesignApp, p: &Value) -> Result<Value, String> {

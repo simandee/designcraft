@@ -1230,6 +1230,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Smart Spacing", "Smarta avstånd"),
     ("Snap to Zone", "Fäst mot zon"),
     ("Info", "Info"),
+    ("Jahresbuch", "Årsbok"),
     ("Index", "Register"),
     ("Articles", "Artiklar"),
     ("Tags", "Taggar"),

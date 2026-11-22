@@ -157,8 +157,9 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
 „Neuer Chat“ / „Chat“, einklappbare Abschnitte, Änderungen sofort mit ⌘Z (ein Regler-Zug = ein
 Schritt), ☰ „Neuen Chat einfügen …“, Zeitraum-Kalender, Komma in Zahlenfeldern, mehrere Chats mit
 eigenem Look, „Aussehen wie Chat …“, Personenfarben, Fortsetzen (Hilfsprogramm `--anhaengen`) und
-Neu aufbauen. Die alten Dialoge sind weg; die Menüpunkte öffnen das Fenster (mit Angaben laufen sie
-direkt, für die Automatik). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
+Neu aufbauen. Die alten Dialoge und das Menü „Jahresbuch“ sind weg (User-Wunsch 22.11.2026); das
+Fenster öffnet sich über **Window › Jahresbuch** in jedem Arbeitsbereich. Die Befehle
+`jahresbuch.chatImport`/`chatDesign` bleiben für die Automatik (mit Angaben laufen sie direkt). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
 **Noch offen:** Personen umbenennen und zusammenlegen. (Chat-Fotos im Eigenschaften-Fenster: erledigt, siehe oben.)
 
 Ursprünglicher Plan:
