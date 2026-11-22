@@ -2127,6 +2127,7 @@ dependencies = [
 name = "designcraft-ui-egui"
 version = "0.21.0"
 dependencies = [
+ "chrono",
  "craft-dialogs",
  "craft-file-formats",
  "craft-keymap",

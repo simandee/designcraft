@@ -49,6 +49,8 @@ impl NumKind<'_> {
         }
     }
     pub fn parse(&self, s: &str) -> Option<f64> {
+        // A decimal comma (`8,4`), as typed in German and many other languages.
+        let s = &s.replace(',', ".");
         match *self {
             NumKind::Measure(u) => parse_measure(s, u).ok(),
             NumKind::Number { .. } => {
@@ -739,6 +741,15 @@ mod tests {
             vec![egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed: true, modifiers: mods }],
             vec![egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed: false, modifiers: mods }],
         ]
+    }
+
+    /// A decimal comma reads like a decimal point, in every kind of number field.
+    #[test]
+    fn decimal_comma() {
+        for kind in [NumKind::Points { decimals: 1 }, NumKind::Number { suffix: "%", decimals: 0 }, NumKind::Measure(Unit::Millimeters)] {
+            assert_eq!(kind.parse("8,4"), kind.parse("8.4"), "{kind:?}");
+            assert!(kind.parse("8,4").is_some_and(|v| v > kind.parse("8").unwrap()), "{kind:?}");
+        }
     }
 
     /// Drive a spinner field through frames; returns every committed value and the field rect.

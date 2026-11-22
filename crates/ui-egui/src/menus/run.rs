@@ -296,8 +296,8 @@ fn run_ui_part1(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
             Ok(Value::Null)
         }
         "app.exportText" => export_bytes(app, p, "rtf", "file.exportText"),
-        "jahresbuch.chatImport" => return Some(crate::jahresbuch_dialog::open(app).map(|()| Value::Null)),
-        "jahresbuch.chatDesign" => return Some(crate::jahresbuch_dialog::open_gestaltung(app).map(|()| Value::Null)),
+        "jahresbuch.chatImport" => return Some(crate::jahresbuch::befehl_einfuegen(app, p)),
+        "jahresbuch.chatDesign" => return Some(crate::jahresbuch::befehl_gestalten(app, p)),
         "app.packageDialog" => {
             // Without a folder, the Package dialog: what the package carries, then the folder.
             let Some(dir) = p.get("dir").and_then(Value::as_str) else {

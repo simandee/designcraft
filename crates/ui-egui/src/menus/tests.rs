@@ -2347,6 +2347,8 @@ fn searched_ui_commands_run_without_parameters_and_keep_preferences() {
         "app.paragraphPanel",
         "app.glyphsPanel",
         "app.tablePanel",
+        "jahresbuch.chatImport",
+        "jahresbuch.chatDesign",
         "window.collapseToIcons",
     ];
     let arrangement = ["docking", "dockingHidden", "floating"];

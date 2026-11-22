@@ -136,6 +136,7 @@ impl DesignApp {
             opening: Vec::new(),
             cursors: cursors::Images::default(),
             live_preview: LivePreview::default(),
+            jahresbuch: Default::default(),
             updates_rt: updates_ui::Runtime::default(),
         }
     }

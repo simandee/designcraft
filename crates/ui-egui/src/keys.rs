@@ -202,7 +202,7 @@ fn build_catalog() -> (Vec<Bindable>, HashSet<&'static str>) {
         add(CommandRef::new(c.id), c.label, shortcut.as_slice(), path, Kind::Command);
     }
     let mut seen = Vec::new();
-    for (id, label, _) in crate::dock::DOCK_TABS.iter().chain(crate::dock::ICON_PANELS) {
+    for (id, label, _) in crate::dock::panels() {
         if seen.contains(id) {
             continue;
         }

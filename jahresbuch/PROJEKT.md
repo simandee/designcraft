@@ -143,7 +143,19 @@ Der Chat ist **ein verketteter Text** im großen Buch und wird immer wieder von 
 (Fotos, Geschichten) unterbrochen; manchmal steht vor dem Chat auf derselben Seite noch Text.
 Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
 
-## Geplant: Fenster „Jahresbuch“ (mit dem User am 22.11.2026 besprochen, noch nicht gebaut)
+## Fenster „Jahresbuch“ (mit dem User am 22.11.2026 besprochen)
+
+**Stand 22.11.2026 – gebaut** (`crates/ui-egui/src/jahresbuch/`: `modell` Chats im Dokument-Etikett
+`jahresbuch.chats`, `gestaltung` Befehle je Chat, `einfuegen` Einfügen/Fortsetzen/Neu aufbauen,
+`kalender`, `panel`): Fenster mit Symbol A1 in eigener Spalte ganz links (eingeklappt), Ansichten
+„Neuer Chat“ / „Chat“, einklappbare Abschnitte, Änderungen sofort mit ⌘Z (ein Regler-Zug = ein
+Schritt), ☰ „Neuen Chat einfügen …“, Zeitraum-Kalender, Komma in Zahlenfeldern, mehrere Chats mit
+eigenem Look, „Aussehen wie Chat …“, Personenfarben, Fortsetzen (Hilfsprogramm `--anhaengen`) und
+Neu aufbauen. Die alten Dialoge sind weg; die Menüpunkte öffnen das Fenster (mit Angaben laufen sie
+direkt, für die Automatik). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
+**Noch offen:** Personen umbenennen und zusammenlegen; Chat-Fotos im Eigenschaften-Fenster (Etappe 5).
+
+Ursprünglicher Plan:
 
 - **Andockbares Seitenfenster** „Jahresbuch“ mit eigenem Symbol (wie Ebenen/Farbfelder; in
   `dock.rs` registrieren, Symbol in `icons.rs`), ersetzt die beiden Menü-Dialoge (die Menüpunkte

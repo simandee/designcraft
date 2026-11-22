@@ -36,7 +36,7 @@ mod new_document;
 mod object_control;
 pub mod object_style_dialog;
 pub mod package_dialog;
-pub mod jahresbuch_dialog;
+pub mod jahresbuch;
 mod page_history;
 mod panel_docking;
 pub mod panels;
@@ -258,6 +258,8 @@ pub struct DesignApp {
     pub(crate) pending_window_commands: Vec<egui::ViewportCommand>,
     /// The host installed a native menu bar (macOS): don't draw menus in the window.
     pub native_menu: bool,
+    /// Das Jahresbuch-Fenster: was es sich zwischen den Bildern merkt.
+    pub(crate) jahresbuch: jahresbuch::panel::Zustand,
     /// The commands the native menu bar gives a key equivalent, with that shortcut: the egui
     /// shortcut handler leaves that key to the bar and runs the command's other bindings itself.
     pub native_shortcuts: std::collections::HashMap<String, String>,

@@ -53,12 +53,21 @@ pub const ICON_PANELS: &[(&str, &str, &str)] = &[
     ("dataMerge", "Data Merge", "panel-datamerge"),
 ];
 
+/// (id, label, icon) of the panels that start in an iconic column of their own, innermost, apart
+/// from the program's panel families: Jahresbuch (WhatsApp chats into the book).
+pub const OWN_COLUMN_PANELS: &[(&str, &str, &str)] = &[("jahresbuch", "Jahresbuch", "panel-jahresbuch")];
+
+/// Every dock panel: (id, label, icon).
+pub fn panels() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
+    DOCK_TABS.iter().chain(ICON_PANELS).chain(OWN_COLUMN_PANELS)
+}
+
 /// Panels that only float, outside the docking layout (they open from a menu).
 pub const FLOATING_PANELS: &[(&str, &str)] = &[("tabs", "Tabs")];
 
 /// The English name of panel `id`.
 pub fn panel_label(id: &str) -> &'static str {
-    DOCK_TABS.iter().chain(ICON_PANELS).map(|p| (p.0, p.1)).chain(FLOATING_PANELS.iter().copied()).find(|p| p.0 == id).map_or("Panel", |p| p.1)
+    panels().map(|p| (p.0, p.1)).chain(FLOATING_PANELS.iter().copied()).find(|p| p.0 == id).map_or("Panel", |p| p.1)
 }
 
 /// A panel's contents at most `max_h` tall, scrolling past that. The Pages panel scrolls its
@@ -121,6 +130,7 @@ pub fn panel_body(app: &mut DesignApp, ui: &mut egui::Ui, id: &str) {
         "dataMerge" => panels::datamerge::show(app, ui),
         "table" => panels::table::show(app, ui),
         "tabs" => panels::tabs::show(app, ui),
+        "jahresbuch" => crate::jahresbuch::panel::show(app, ui),
         _ => panels::properties::info_panel(app, ui),
     }
 }

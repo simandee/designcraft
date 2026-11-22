@@ -885,7 +885,11 @@ fn default_workspaces_are_the_canvas_beside_an_end_dock() {
     assert!(valid(&layout));
     let (side, columns) = dock_of(&layout);
     assert_eq!(side, Side::End);
-    let [outer, icons] = columns else { panic!("{columns:?}") };
+    let [outer, icons, own] = columns else { panic!("{columns:?}") };
+    // Innermost, apart from the panel families: the panels of their own column (Jahresbuch).
+    assert!(own.iconic);
+    let own: Vec<&str> = own.groups.iter().flat_map(|g| g.panels.iter().map(String::as_str)).collect();
+    assert_eq!(own, crate::dock::OWN_COLUMN_PANELS.iter().map(|p| p.0).collect::<Vec<_>>());
     assert!(!outer.iconic);
     assert_eq!(outer.groups.len(), 1);
     assert_eq!(outer.groups[0].panels, ["properties", "pages", "layers"]);

@@ -52,9 +52,7 @@ pub(crate) fn cancel_gesture(ctx: &egui::Context) {
 }
 
 fn normalize(raw: &str) -> Option<&'static str> {
-    crate::dock::DOCK_TABS
-        .iter()
-        .chain(crate::dock::ICON_PANELS)
+    crate::dock::panels()
         .find(|(id, label, _)| id.eq_ignore_ascii_case(raw.trim()) || label.eq_ignore_ascii_case(raw.trim()))
         .map(|(id, _, _)| *id)
 }
@@ -198,7 +196,14 @@ pub(crate) fn default_layout(ui: &crate::UiState) -> Layout<String> {
             columns.push(Column { groups, width: COLUMN_WIDTH, iconic: !ui.dock_expanded, iconic_width: Some(ICON_WIDTH) });
         }
     }
+    // The panels of their own column (Jahresbuch) go innermost (leftmost), apart from the
+    // program's panel families; a workspace with named icon groups shows only those.
+    let own: Vec<String> = crate::dock::OWN_COLUMN_PANELS.iter().filter_map(|p| ui.icon_groups.is_none().then(|| placed.take(p.0)).flatten()).collect();
     columns.extend(icon_column(ui.icon_groups.as_deref(), &mut placed));
+    if !own.is_empty() {
+        let groups = own.into_iter().map(|id| Group::new(vec![id], 0)).collect();
+        columns.push(Column { groups, width: COLUMN_WIDTH + 20.0, iconic: true, iconic_width: Some(ICON_WIDTH) });
+    }
     with_canvas(columns, floating)
 }
 
@@ -672,9 +677,7 @@ fn float_space(app: &DesignApp) -> FloatSpace<String> {
         Some(ctx) => craft_ui::docking::float_space::<String>(ctx, area_id()).unwrap_or_else(|| FloatSpace::new(float_bounds(app, ctx))),
         None => FloatSpace::new(HEADLESS_AREA),
     };
-    crate::dock::DOCK_TABS
-        .iter()
-        .chain(crate::dock::ICON_PANELS)
+    crate::dock::panels()
         .fold(space, |space, (id, _, _)| space.with_panel_size((*id).to_owned(), floating_size(id)))
 }
 
@@ -1197,6 +1200,13 @@ fn three_line_menu(app: &mut DesignApp, ui: &mut egui::Ui, panel: &str) {
         crate::panels::pages::panel_menu(app, ui);
         ui.separator();
     }
+    if panel == crate::jahresbuch::PANEL {
+        if ui.button("Neuen Chat einfügen …").clicked() {
+            app.jahresbuch.neu_anzeigen = true;
+            ui.close();
+        }
+        ui.separator();
+    }
     panel_menu(app, ui, panel);
 }
 
@@ -1228,7 +1238,7 @@ pub(crate) fn panel_menu(app: &mut DesignApp, ui: &mut egui::Ui, panel: &str) {
     dock_panel_item(app, ui, panel);
     ui.menu_button(crate::rtl::widget(ui, crate::i18n::tr(&language, "Group with")), |ui| {
         egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-            for (anchor, label, _) in crate::dock::DOCK_TABS.iter().chain(crate::dock::ICON_PANELS) {
+            for (anchor, label, _) in crate::dock::panels() {
                 if *anchor != panel && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&language, label))).clicked() {
                     // A closed icon panel is made visible before becoming the destination.
                     let result = app
@@ -1264,13 +1274,15 @@ fn floating_size(panel: &str) -> egui::Vec2 {
         "properties" | "pages" | "layers" => egui::vec2(300.0, 420.0),
         "characterStyles" | "paragraphStyles" => egui::vec2(290.0, 340.0),
         "glyphs" | "library" | "links" | "preflight" | "dataMerge" => egui::vec2(320.0, 400.0),
+        // Long, with collapsible sections: as tall as most screens allow.
+        "jahresbuch" => egui::vec2(300.0, 760.0),
         _ => egui::vec2(280.0, 360.0),
     }
 }
 
 /// The name of a dock panel's icon in [`crate::icons`].
 fn panel_icon(panel: &str) -> Option<&'static str> {
-    crate::dock::DOCK_TABS.iter().chain(crate::dock::ICON_PANELS).find(|(id, _, _)| *id == panel).map(|(_, _, icon)| *icon)
+    crate::dock::panels().find(|(id, _, _)| *id == panel).map(|(_, _, icon)| *icon)
 }
 
 /// The panels' content and icons.
@@ -1298,7 +1310,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         });
     }
     fn logical_label(&self, id: &String) -> String {
-        let english = crate::dock::DOCK_TABS.iter().chain(crate::dock::ICON_PANELS).find(|p| p.0 == id).map_or(id.as_str(), |p| p.1);
+        let english = crate::dock::panels().find(|p| p.0 == id).map_or(id.as_str(), |p| p.1);
         crate::i18n::tr(&self.app.ui.language, english).to_owned()
     }
     fn permissions(&self, id: &String) -> Permissions {

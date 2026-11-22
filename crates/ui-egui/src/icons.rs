@@ -1235,6 +1235,7 @@ fn paint_text(pen: &mut Pen, name: &str) -> bool {
         }
         "format-container" => pen.rect(4.0, 4.0, 16.0, 16.0),
         "format-text" => pen.text(10.0, 10.5, "T", 15.0),
+        "panel-jahresbuch" => sprechblasen(pen, 2.5),
         "panel-datamerge" => {
             pen.w = 1.2;
             pen.rect(3.0, 2.0, 17.0, 18.0);
@@ -1296,6 +1297,39 @@ pub fn button(ui: &mut egui::Ui, name: &str, size: f32, selected: bool, tip: &st
             crate::rtl::label(ui, tip);
         })
     }
+}
+
+/// Punkte eines Bogens um (cx, cy) mit Radius r von Winkel a0 bis a1 (Grad, im Uhrzeigersinn ab
+/// 3 Uhr).
+fn bogen(out: &mut Vec<(f32, f32)>, cx: f32, cy: f32, r: f32, a0: f32, a1: f32) {
+    let n = 6;
+    for k in 0..=n {
+        let a = (a0 + (a1 - a0) * k as f32 / n as f32).to_radians();
+        out.push((cx + r * a.cos(), cy + r * a.sin()));
+    }
+}
+
+/// Das Jahresbuch-Symbol: zwei Sprechblasen mit runden Ecken (Radius `r`), vorne links mit
+/// Schwänzchen unten links, hinten rechts mit Schwänzchen unten rechts, die hintere nur, wo die
+/// vordere sie nicht verdeckt.
+fn sprechblasen(pen: &mut Pen, r: f32) {
+    let (x0, y0, x1, y1) = (2.0, 3.0, 13.0, 11.0);
+    let mut v = Vec::new();
+    bogen(&mut v, x0 + r, y0 + r, r, 180.0, 270.0);
+    bogen(&mut v, x1 - r, y0 + r, r, 270.0, 360.0);
+    bogen(&mut v, x1 - r, y1 - r, r, 0.0, 90.0);
+    v.extend([(6.5, y1), (3.5, 14.0), (4.2, y1)]);
+    bogen(&mut v, x0 + r, y1 - r, r, 90.0, 180.0);
+    v.push(v[0]);
+    pen.line(&v);
+    let (x0, y0, x1, y1) = (8.0, 7.0, 18.0, 15.0);
+    let mut w = vec![(13.0, y0)];
+    bogen(&mut w, x1 - r, y0 + r, r, 270.0, 360.0);
+    bogen(&mut w, x1 - r, y1 - r, r, 0.0, 90.0);
+    w.extend([(15.8, y1), (16.5, 18.0), (13.5, y1)]);
+    bogen(&mut w, x0 + r, y1 - r, r, 90.0, 180.0);
+    w.push((x0, 11.0));
+    pen.line(&w);
 }
 
 #[cfg(test)]
@@ -1431,3 +1465,4 @@ mod tests {
         }
     }
 }
+

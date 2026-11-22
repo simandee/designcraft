@@ -1156,12 +1156,13 @@ class Importer:
             self.parent_index = len(self.dok.get("parents", []))
             self.mustervorlage()
 
-    def inhalt(self, story):
-        """Den Chat-Text in `story` setzen, formatieren und Bilder, Emojis und Icons verankern."""
+    def inhalt(self, story, versatz=0):
+        """Den Chat-Text in `story` formatieren und Bilder, Emojis und Icons verankern; `versatz`:
+        wo er im Text beginnt (Bytes), beim Fortsetzen hinter dem vorhandenen Chat."""
         s = self.s
         text = "\n".join(a.inhalt for a in self.absaetze)
         def b(n):
-            return len(text[:n].encode())
+            return versatz + len(text[:n].encode())
         pos = 0
         einfuegen = []
         for a in self.absaetze:
@@ -1197,8 +1198,15 @@ class Importer:
             self.einrichtung()
             einrichtung, self.steps = self.steps, []
             text = "\n".join(a.inhalt for a in self.absaetze)
-            s("story.setText", story="__STORY__", text=text)
-            self.inhalt("__STORY__")
+            nach = getattr(self.a, "anhaengen", None)
+            if nach is not None:
+                # Fortsetzen: hinter dem vorhandenen Text (nach Bytes), der bleibt, wie er ist.
+                s("text.select", story="__STORY__", anchor=nach, focus=nach)
+                s("text.insert", text="\n" + text, raw=True)
+                self.inhalt("__STORY__", versatz=nach + 1)
+            else:
+                s("story.setText", story="__STORY__", text=text)
+                self.inhalt("__STORY__")
             self.schreiben(self.a.einrichtung_ausgabe, einrichtung)
             self.schreiben(self.a.ausgabe, self.steps)
             return len(einrichtung) + len(self.steps)
@@ -1265,14 +1273,19 @@ def main():
     ap.add_argument("--chat", help="Kennung des Chats im Export (siehe --liste); ohne: der erste")
     ap.add_argument("--personen", help="Personen als JSON (Liste oder Datei): [{key, name, ids, farbe}]")
     ap.add_argument("--nummer", type=int, default=1, help="Nummer des Chats im Buch (ab 2: eigene Formate und Farbfelder)")
+    ap.add_argument("--personen-ausgabe", help="Datei, in die die Personen des Chats (JSON) geschrieben werden")
     ap.add_argument("--stil", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "stil.json"))
     ap.add_argument("--schrift", help='Schrift für den Chat, z. B. "Space Grotesk" (Standard) oder "Work Sans"')
     ap.add_argument("--von"); ap.add_argument("--bis"); ap.add_argument("--emoji-font"); ap.add_argument("--arbeitsordner")
     ap.add_argument("--dokument", help="Ins bestehende Dokument: document.inspect als JSON-Datei (DesignCraft-Menü Jahresbuch)")
     ap.add_argument("--einrichtung-ausgabe", help="mit --dokument: Datei für das Einrichtungs-Skript")
+    ap.add_argument("--anhaengen", type=int, help="mit --dokument: den Chat hinten an den Text anhängen, der so viele Bytes lang ist (Fortsetzen)")
     args = ap.parse_args()
     imp = Importer(args)
     imp.aufbauen()
+    if args.personen_ausgabe:
+        with open(args.personen_ausgabe, "w", encoding="utf-8") as fh:
+            json.dump(imp.personen, fh, ensure_ascii=False)
     n = imp.skript()
     print(f"{len(imp.absaetze)} Absätze, {n} Befehle -> {args.ausgabe}")
 

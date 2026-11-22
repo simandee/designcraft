@@ -32,9 +32,7 @@ pub(super) fn parse_entries(entries: &[&str]) -> Vec<Item> {
             i += 1;
             out.push(Item::Sub(name.to_string(), sub));
         } else if e == "ui:window.panel" {
-            let items = crate::dock::DOCK_TABS
-                .iter()
-                .chain(crate::dock::ICON_PANELS)
+            let items = crate::dock::panels()
                 .map(|(id, label, _)| Item::Cmd { label: label.to_string(), id: "window.panel".into(), params: json!({"panel": id}), shortcut: None })
                 .collect();
             out.push(Item::Sub("Panels".into(), items));
