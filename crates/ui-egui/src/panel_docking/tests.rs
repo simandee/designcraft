@@ -1346,3 +1346,21 @@ fn a_document_dropped_on_a_floating_panel_window_opens() {
     open_window_drops(&mut app, &[files]);
     assert_eq!(app.session.documents().len(), 1, "the dropped document opens");
 }
+
+/// A layout saved before the Jahresbuch panel existed (it has no place in it): choosing the panel
+/// from the menu still shows it.
+#[test]
+fn a_saved_layout_without_the_jahresbuch_panel_shows_it_from_the_menu() {
+    let mut app = app();
+    let mut layout = default_layout(&app.ui);
+    if let Some(Node::Split { second, .. }) = layout.root.as_mut()
+        && let Node::Dock { columns, .. } = second.as_mut()
+    {
+        columns.retain(|c| !c.groups.iter().any(|g| g.panels.iter().any(|p| p == "jahresbuch")));
+    }
+    assert!(!layout.panels().iter().any(|p| p.as_str() == "jahresbuch"));
+    app.ui.docking = Some(layout);
+    app.run("jahresbuch.chatImport", json!({})).unwrap();
+    let docked = app.ui.docking.clone().unwrap_or_else(|| default_layout(&app.ui));
+    assert!(docked.panels().iter().any(|p| p.as_str() == "jahresbuch"), "{docked:?}");
+}
