@@ -45,6 +45,8 @@ pub struct State {
     pub region: u8,
     /// The ink whose CMYK fields are open (0 hundreds, 1 tens, 2 ones).
     pub ink_open: Option<usize>,
+    /// Custom was just picked: scroll its diagram into view.
+    pub scroll_to_custom: bool,
     pub textures: preview::Cache,
 }
 
@@ -53,7 +55,11 @@ pub fn open(app: &mut DesignApp, p: &Value) -> Result<Value, String> {
     match p.get("tab").and_then(Value::as_str) {
         Some("shape") => app.page_numbers.tab = Tab::Shape,
         Some("colors") => app.page_numbers.tab = Tab::Colors,
-        Some("mixing") => app.page_numbers.tab = Tab::Mixing,
+        Some("mixing") => {
+            app.page_numbers.tab = Tab::Mixing;
+            // With Custom mixing, open at its diagram.
+            app.page_numbers.scroll_to_custom = true;
+        }
         Some(t) => return Err(format!("unknown tab `{t}` (shape, colors, mixing)")),
         None => {}
     }
@@ -312,7 +318,10 @@ fn shape_tab(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
     let fw = widgets::full_width(ui);
     widgets::caption(ui, tr(app, "Name"));
     let id = ui.make_persistent_id("page-numbers-name");
-    let mut name: String = ui.data(|m| m.get_temp(id)).filter(|_| ui.memory(|m| m.has_focus(egui::Id::unique("page-numbers-name-field")))).unwrap_or_else(|| d.name.clone());
+    let mut name: String = ui
+        .data(|m| m.get_temp(id))
+        .filter(|_| ui.memory(|m| m.has_focus(egui::Id::unique("page-numbers-name-field"))))
+        .unwrap_or_else(|| d.name.clone());
     let r = ui.add(egui::TextEdit::singleline(&mut name).id(egui::Id::unique("page-numbers-name-field")).desired_width(fw));
     ui.data_mut(|m| m.insert_temp(id, name.clone()));
     if r.lost_focus() && !name.trim().is_empty() {
@@ -395,7 +404,9 @@ fn cmyk_fields(app: &DesignApp, ui: &mut Ui, id: &str, c: &mut Cmyk) -> bool {
         .iter()
         .filter(|s| !s.hidden)
         .filter_map(|s| match &s.value {
-            designcraft_color::swatch::SwatchValue::Color { color: designcraft_color::Color::Cmyk { c, m, y, k }, .. } => Some((s.name.clone(), [*c, *m, *y, *k])),
+            designcraft_color::swatch::SwatchValue::Color { color: designcraft_color::Color::Cmyk { c, m, y, k }, .. } => {
+                Some((s.name.clone(), [*c, *m, *y, *k]))
+            }
             _ => None,
         })
         .collect();
@@ -469,6 +480,7 @@ fn mixing_tab(app: &mut DesignApp, ui: &mut Ui, d: &mut Design, page: &str) {
         }
     });
     if let Some(m) = picked {
+        app.page_numbers.scroll_to_custom = matches!(m, Mix::Custom { .. });
         d.mix = m;
     }
     widgets::rule(ui);
@@ -582,6 +594,10 @@ fn custom_fields(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
     let names: Vec<String> = modes.iter().map(|m| tr(m.name())).collect();
     let Mix::Custom { base } = &d.mix else { return };
     let cur = modes.iter().position(|m| same_kind(m, base));
+    // Just picked in the gallery: bring the diagram up (it lies below the gallery).
+    if std::mem::take(&mut app.page_numbers.scroll_to_custom) {
+        ui.scroll_to_cursor(Some(egui::Align::TOP));
+    }
     widgets::caption(ui, &tr("Other Overlaps Like"));
     if let Some(i) = widgets::dropdown_list(ui, cur.map_or("", |i| names[i].as_str()), fw, &names, cur) {
         d.mix = Mix::Custom { base: Box::new(modes[i].clone()) };
@@ -594,7 +610,8 @@ fn custom_fields(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
     }
     hint(ui, &tr("Click an overlap to choose its colour."));
     let region = app.page_numbers.region;
-    let label = [("Hundreds", 0), ("Tens", 1), ("Ones", 2)].iter().filter(|(_, p)| region >> p & 1 == 1).map(|(l, _)| tr(l)).collect::<Vec<_>>().join(" + ");
+    let label =
+        [("Hundreds", 0), ("Tens", 1), ("Ones", 2)].iter().filter(|(_, p)| region >> p & 1 == 1).map(|(l, _)| tr(l)).collect::<Vec<_>>().join(" + ");
     widgets::caption(ui, &label);
     let key = region_key(region);
     let now = d.custom.get(&key).cloned();
@@ -639,7 +656,13 @@ fn apply_section(app: &mut DesignApp, ui: &mut Ui, set: &Settings, d: &Design) {
         .unwrap_or_default();
     let mine: Vec<&String> = set.styles.iter().filter(|(_, v)| **v == d.name).map(|(k, _)| k).collect();
     if markers.is_empty() {
-        hint(ui, tr(app, "This document has no page number yet. Put Type › Insert Special Character › Markers › Current Page Number in a text frame on a parent page."));
+        hint(
+            ui,
+            tr(
+                app,
+                "This document has no page number yet. Put Type › Insert Special Character › Markers › Current Page Number in a text frame on a parent page.",
+            ),
+        );
         return;
     }
     let shown: Vec<String> = markers.iter().map(|(s, n)| format!("{} ({n})", if s.is_empty() { tr(app, "no character style") } else { s })).collect();

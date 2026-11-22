@@ -283,7 +283,7 @@ impl Exporter<'_> {
                 if d.overprint {
                     me.warn("overprint is not exported yet");
                 }
-                if let Some(c) = me.swatch_color(&d.color, d.tint) {
+                if let Some(c) = me.deco_color(d) {
                     match &d.path {
                         Some(p) => me.fill_path(s, p, c),
                         None => me.fill_rect(s, d.rect, c),
@@ -322,7 +322,7 @@ impl Exporter<'_> {
         self.as_artifact(s, |me, s| {
             // Decorations set to lie over the text (shading specks over text).
             for d in ft.decos.iter().filter(|d| !d.nonprinting && d.over_text) {
-                if let Some(c) = me.swatch_color(&d.color, d.tint) {
+                if let Some(c) = me.deco_color(d) {
                     match &d.path {
                         Some(p) => me.fill_path(s, p, c),
                         None => me.fill_rect(s, d.rect, c),

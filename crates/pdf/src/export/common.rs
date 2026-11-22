@@ -129,6 +129,14 @@ impl Exporter<'_> {
 
     /// A swatch + tint as a PDF colour: spot swatches (and tints of them) become `/Separation`
     /// with the swatch's values as the alternate space; process colours stay in their device space.
+    /// A text decoration's colour: its own (layered page numbers' mixed colours) or its swatch's.
+    pub(crate) fn deco_color(&self, d: &designcraft_compose::Deco) -> Option<krilla::color::Color> {
+        match &d.value {
+            Some(c) => Some(device(c, self.rgb_only)),
+            None => self.swatch_color(&d.color, d.tint),
+        }
+    }
+
     pub(crate) fn swatch_color(&self, name: &str, tint: f32) -> Option<krilla::color::Color> {
         use krilla::color::separation::{Color as SepColor, SeparationColorant, SeparationSpace};
         let mut n = name;

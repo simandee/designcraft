@@ -49,7 +49,9 @@ pub fn show(ui: &mut Ui, cache: &mut Cache, design: &Design, text: &str, fonts: 
         if let Some(l) = layered(design, text, 100.0, fonts) {
             let b = l.bounds;
             let s = (f64::from(pw) * 0.86 / b.width()).min(f64::from(ph) * 0.8 / b.height());
-            let xf = kurbo::Affine::translate((f64::from(pw) / 2.0, f64::from(ph) / 2.0)) * kurbo::Affine::scale(s) * kurbo::Affine::translate(-b.center().to_vec2());
+            let xf = kurbo::Affine::translate((f64::from(pw) / 2.0, f64::from(ph) / 2.0))
+                * kurbo::Affine::scale(s)
+                * kurbo::Affine::translate(-b.center().to_vec2());
             rc.set_transform(xf);
             for sh in &l.shapes {
                 rc.set_paint(rgba(&sh.color));
@@ -96,27 +98,45 @@ pub fn venn(ui: &mut Ui, design: &Design, selected: u8, w: f32) -> Option<u8> {
             }),
         })
         .collect();
-    let mut px = vec![0u8; pw * ph * 4];
-    let code = |x: usize, y: usize| code_at(pos2(x as f32 / ppp, y as f32 / ppp), &centres, r);
-    for y in 0..ph {
-        for x in 0..pw {
-            let c = code(x, y);
-            let edge = (x > 0 && code(x - 1, y) != c) || (y > 0 && code(x, y - 1) != c);
-            let sel_edge = c == selected && (x == 0 || y == 0 || code(x - 1, y) != c || code(x, y - 1) != c || code(x + 1, y) != c || code(x, y + 1) != c);
-            let rgb = if sel_edge && c != 0 {
-                let a = t.accent;
-                [a.r(), a.g(), a.b()]
-            } else if edge {
-                [255, 255, 255]
-            } else {
-                colors[c as usize]
-            };
-            let i = (y * pw + x) * 4;
-            px[i..i + 4].copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+    // Drawn again only when the design, the pick or the size changed; the handle is kept, or
+    // the texture would be freed before it is painted.
+    let k = {
+        let mut s = std::collections::hash_map::DefaultHasher::new();
+        (serde_json::to_string(design).unwrap_or_default(), selected, pw, ph, t.accent.to_array()).hash(&mut s);
+        s.finish()
+    };
+    let store = egui::Id::unique("page-number-venn");
+    let kept: Option<(u64, egui::TextureHandle)> = ui.data(|m| m.get_temp(store));
+    let tex = match kept {
+        Some((kk, tex)) if kk == k => tex,
+        _ => {
+            let mut px = vec![0u8; pw * ph * 4];
+            let code = |x: usize, y: usize| code_at(pos2(x as f32 / ppp, y as f32 / ppp), &centres, r);
+            for y in 0..ph {
+                for x in 0..pw {
+                    let c = code(x, y);
+                    let edge = (x > 0 && code(x - 1, y) != c) || (y > 0 && code(x, y - 1) != c);
+                    let sel_edge = c == selected
+                        && (1..=(3.0 * ppp) as usize)
+                            .any(|d| x < d || y < d || code(x - d, y) != c || code(x, y - d) != c || code(x + d, y) != c || code(x, y + d) != c);
+                    let rgb = if sel_edge && c != 0 {
+                        let a = t.accent;
+                        [a.r(), a.g(), a.b()]
+                    } else if edge {
+                        [255, 255, 255]
+                    } else {
+                        colors[c as usize]
+                    };
+                    let i = (y * pw + x) * 4;
+                    px[i..i + 4].copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+                }
+            }
+            let img = egui::ColorImage::from_rgba_unmultiplied([pw, ph], &px);
+            let tex = crate::widgets::load_texture(ui.ctx(), "page-number-venn", img, egui::TextureOptions::LINEAR);
+            ui.data_mut(|m| m.insert_temp(store, (k, tex.clone())));
+            tex
         }
-    }
-    let img = egui::ColorImage::from_rgba_unmultiplied([pw, ph], &px);
-    let tex = crate::widgets::load_texture(ui.ctx(), "page-number-venn", img, egui::TextureOptions::LINEAR);
+    };
     let (rect, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
     ui.painter().image(tex.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Group, true, "Overlaps"));
