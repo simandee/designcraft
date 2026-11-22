@@ -101,6 +101,11 @@ ans Seitenformat des Buchs an (entworfen für A4; das Test-Buch des Users ist **
   Datum, Abstand bei gleichen Formaten = gleiche Person. Foto-Serien: alle Reihen außer der letzten
   „Album X n“, die letzte „Album X n Ende“; eine einzelne Reihe ist eine normale Bildblase.
   Bekannt: Text → Foto derselben Person bekommt den Wechsel-Abstand (andere Formate).
+- **Schriftgrößen** (Chat-Gestaltung, Regler in pt, User-Wunsch 22.11.2026; stil.json `schrift`):
+  Nachrichtentext **8,4**, Uhrzeit **6**, Datum **10**, Zitat und Hinweise **7,2** (Zitat-Name
+  = 6,8/7,2, Hinweis = 7,4/7,2 davon). Emojis (Script-Label „Emoji“) wachsen mit dem Nachrichtentext,
+  Datums-Verzierungen („Verzierung“) mit dem Datum, beide samt Anhebung (yOffset). Die Labels setzt
+  das Hilfsprogramm erst seit 22.11.2026 – in früher eingefügten Chats wachsen sie nicht mit.
 - **Vorschau** im Jahresbuch-Menü: Haken „Vorschau“ zeigt Farben, Schrift, Korn, Rauschen und
   Abstände sofort im offenen Dokument; „Gestaltung übernehmen“ macht es fest, Abbrechen nimmt es zurück.
 - **Blasen:** ihre links hellblau, seine rechts hell-koralle, Schatten in der Gegenfarbe,

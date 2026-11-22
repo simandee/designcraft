@@ -67,6 +67,17 @@ const ABSTAENDE: [(&str, &str, &str, f64); 4] = [
     ("abstandGleich", "abstand.gleiche_person", "Nachrichten derselben Person", 12.0),
     ("abstandWechsel", "abstand.wechsel", "Wechsel zur anderen Person", 14.5),
 ];
+/// Schriftgrößen (pt): (Schlüssel im Fenster, Schlüssel in stil.json, Beschriftung, Standard).
+/// Gleiche Vorgaben wie `SCHRIFT` im Hilfsprogramm.
+const SCHRIFTGROESSEN: [(&str, &str, &str, f64); 4] = [
+    ("schriftText", "schrift.text", "Nachrichtentext", 8.4),
+    ("schriftZeit", "schrift.zeit", "Uhrzeit", 6.0),
+    ("schriftDatum", "schrift.datum", "Datum", 10.0),
+    ("schriftZitat", "schrift.zitat", "Zitat und Hinweise", 7.2),
+];
+/// Zitat-Name und Hinweise im Verhältnis zum Zitat-Text (6,8 und 7,4 zu 7,2 pt).
+const ZITAT_NAME: f64 = 6.8 / 7.2;
+const HINWEIS: f64 = 7.4 / 7.2;
 /// Welche Gestaltung die Vorschau gerade zeigt.
 const VORSCHAU_FELDER: &str = "_vorschauFelder";
 
@@ -160,7 +171,7 @@ fn oeffnen(app: &mut DesignApp, id: &str) -> Result<(), String> {
     for (k, sk, _, standard) in FARBEN {
         f.insert(k.into(), json!(s(sk, standard)));
     }
-    for (k, sk, _, standard) in REGLER.iter().chain(ABSTAENDE.iter()) {
+    for (k, sk, _, standard) in REGLER.iter().chain(ABSTAENDE.iter()).chain(SCHRIFTGROESSEN.iter()) {
         f.insert((*k).into(), json!(stil_wert(&stil, sk).and_then(Value::as_f64).unwrap_or(*standard)));
     }
     f.insert("vorschau".into(), json!(false));
@@ -272,6 +283,17 @@ fn show_gestaltung(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
         }
     });
 
+    egui::Grid::new("jahresbuch_schriftgroessen").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+        for (k, _, l, standard) in SCHRIFTGROESSEN {
+            ui.label(format!("{l} (pt)"));
+            let mut v = d.n(k).unwrap_or(standard);
+            if ui.add(egui::Slider::new(&mut v, 4.0..=24.0).step_by(0.1)).changed() {
+                d.fields.insert(k.into(), json!(v));
+            }
+            ui.end_row();
+        }
+    });
+
     kopf(ui, "Korn und Rauschen (0 = aus)");
     let mut blasen_an = d.b(RAUSCHEN_BLASEN_AN.0);
     if ui.checkbox(&mut blasen_an, "Rauschen auch auf den Chatblasen und ihren Schatten (nicht auf Fotos)").changed() {
@@ -364,6 +386,9 @@ fn speichere_stil(d: &Dialog) {
     for (k, sk, _, _) in REGLER.iter().chain(ABSTAENDE.iter()) {
         setze_stil(&mut stil, sk, json!(d.n(k).unwrap_or(0.0)));
     }
+    for (k, sk, _, standard) in SCHRIFTGROESSEN {
+        setze_stil(&mut stil, sk, json!(d.n(k).unwrap_or(standard)));
+    }
     stil.insert(RAUSCHEN_BLASEN_AN.1.into(), json!(d.b(RAUSCHEN_BLASEN_AN.0)));
     if let Ok(t) = serde_json::to_string_pretty(&Value::Object(stil)) {
         if let Some(o) = stil_pfad().parent() {
@@ -453,6 +478,22 @@ fn gestaltung_skript(app: &mut DesignApp, d: &Dialog) -> Result<String, String> 
             abstand(format!("Album {seite} {v} Anfang"), json!({"spaceBefore": vor}));
         }
     }
+    // Schriftgrößen; Emojis wachsen mit dem Nachrichtentext, die Verzierungen mit dem Datum.
+    let groesse = |k: &str| d.n(k).or_else(|| SCHRIFTGROESSEN.iter().find(|a| a.0 == k).map(|a| a.3)).unwrap_or(8.0).clamp(4.0, 24.0);
+    let (text, zeit, datum, zitat) = (groesse("schriftText"), groesse("schriftZeit"), groesse("schriftDatum"), groesse("schriftZitat"));
+    for (stil, size) in [("Chat Sie", text), ("Datum", datum)] {
+        if hat("paragraphStyles", stil) {
+            b("style.paragraph.edit", json!({"name": stil, "chars": {"size": size}}));
+        }
+    }
+    for (stil, size) in [("Zeit", zeit), ("Zitat Text", zitat), ("Zitat Name Ich", zitat * ZITAT_NAME), ("Zitat Name Sie", zitat * ZITAT_NAME), ("Hinweis", zitat * HINWEIS)] {
+        if hat("characterStyles", stil) {
+            b("style.character.edit", json!({"name": stil, "chars": {"size": (size * 100.0).round() / 100.0}}));
+        }
+    }
+    for (command, params) in mitwachsende_objekte(app, text, datum) {
+        b(command, params);
+    }
     // Rauschen: Bildrahmen auf der Mustervorlage, nach ihrem Namen gefunden; Stärke = Deckkraft.
     for (label, key, hell) in [("Rauschen Innenfläche", "rauschenInnen", false), ("Rauschen Rahmen (Blau)", "rauschenRahmen", true)] {
         let gefunden = app.session.execute("object.findByLabel", &json!({"label": label})).map_err(|e| e.to_string())?;
@@ -477,6 +518,34 @@ fn blasen_ecken(seite: &str) -> Value {
     if seite == "Ich" { json!([rund, rund, spitz, rund]) } else { json!([rund, rund, rund, spitz]) }
 }
 
+/// Emojis (Script-Label „Emoji“) und Datums-Verzierungen („Verzierung“) im Text: Befehle, die sie
+/// so groß machen und so weit anheben, wie es zum Nachrichtentext `text` und zum Datum `datum`
+/// passt. Gerechnet wird vom Dokument aus, wie es vor einer laufenden Vorschau war (die Vorschau
+/// spielt ihr Skript immer auf diesem Stand ab), im Verhältnis zur Schriftgröße, die es dort hatte.
+fn mitwachsende_objekte(app: &DesignApp, text: f64, datum: f64) -> Vec<(&'static str, Value)> {
+    let Some(st) = app.session.active() else { return Vec::new() };
+    let doc = st.interaction.as_ref().map_or(&st.doc, |i| &i.doc);
+    let stilgroesse = |name: &str, standard: f64| {
+        doc.styles.paragraph.iter().find(|s| s.name == name).and_then(|s| s.chars.size).filter(|v| *v > 0.0).unwrap_or(standard)
+    };
+    let faktor = [("Emoji", text / stilgroesse("Chat Sie", 8.4)), ("Verzierung", datum / stilgroesse("Datum", 10.0))];
+    let mut out = Vec::new();
+    for (sid, story) in &doc.stories {
+        for (k, o) in story.objects.iter().enumerate() {
+            let Some(f) = faktor.iter().find(|(l, _)| *l == o.item.label).map(|(_, f)| *f) else { continue };
+            if (f - 1.0).abs() < 1e-6 {
+                continue;
+            }
+            let (_, h) = o.size();
+            out.push(("anchored.resize", json!({"story": sid.0, "index": k, "height": (h * f).clamp(4.0, 10_000.0)})));
+            if let designcraft_doc::AnchorPosition::Inline { y_offset } = o.position {
+                out.push(("anchored.options", json!({"story": sid.0, "index": k, "position": "inline", "yOffset": y_offset * f})));
+            }
+        }
+    }
+    out
+}
+
 /// Die Gestaltung fest aufs Dokument anwenden (ein Rückgängig-Schritt).
 fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
     let text = gestaltung_skript(app, d)?;
@@ -486,7 +555,9 @@ fn gestaltung_anwenden(app: &mut DesignApp, d: &Dialog) -> Result<(), String> {
 /// Die Felder, die die Gestaltung bestimmen: ändert sich einer, wird die Vorschau neu gezeigt.
 fn gestaltungs_felder(d: &Dialog) -> Value {
     let mut f = Map::new();
-    let schluessel = FARBEN.iter().map(|x| x.0).chain(REGLER.iter().map(|x| x.0)).chain(ABSTAENDE.iter().map(|x| x.0)).chain(["schrift", RAUSCHEN_BLASEN_AN.0]);
+    let schluessel = FARBEN.iter().map(|x| x.0).chain(REGLER.iter().map(|x| x.0)).chain(ABSTAENDE.iter().map(|x| x.0))
+        .chain(SCHRIFTGROESSEN.iter().map(|x| x.0))
+        .chain(["schrift", RAUSCHEN_BLASEN_AN.0]);
     for k in schluessel {
         f.insert(k.into(), d.fields.get(k).cloned().unwrap_or(Value::Null));
     }
@@ -730,6 +801,48 @@ mod tests {
         assert!(app.session.active().unwrap().interaction.is_none(), "keine Vorschau mehr offen");
         let doc = app.session.execute("document.inspect", &json!({})).unwrap();
         assert_eq!(doc["pageCount"], seiten, "kein Chat eingefügt, keine Seiten dazu");
+    }
+
+    /// Schriftgrößen in der Chat-Gestaltung: die Formate ändern sich, Emojis wachsen mit dem
+    /// Nachrichtentext und die Verzierungen mit dem Datum – auch wenn die Vorschau mehrmals neu
+    /// gezeigt wird (gerechnet vom Stand vor der Vorschau, nicht vom schon vergrößerten).
+    #[test]
+    fn schriftgroessen_skalieren_emojis_und_verzierungen() {
+        let (Ok(export), Ok(medien)) = (std::env::var("JAHRESBUCH_TEST_EXPORT"), std::env::var("JAHRESBUCH_TEST_MEDIEN")) else { return };
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"preset": "A4", "pages": 1, "facingPages": true})).unwrap();
+        open(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        for (k, v) in [("export", export.as_str()), ("medien", medien.as_str()), ("von", "2026-11-01"), ("bis", "2026-11-30"), ("python", "python3")] {
+            d.fields.insert(k.into(), json!(v));
+        }
+        confirm(&mut app, &d).unwrap();
+        let hoehen = |app: &DesignApp, label: &str| -> Vec<f64> {
+            let doc = &app.session.active().unwrap().doc;
+            doc.stories.values().flat_map(|st| st.objects.iter()).filter(|o| o.item.label == label).map(|o| o.size().1).collect()
+        };
+        let (emoji0, deko0) = (hoehen(&app, "Emoji"), hoehen(&app, "Verzierung"));
+        assert!(!emoji0.is_empty() && !deko0.is_empty(), "der Test-Chat hat Emojis und Datumszeilen");
+        open_gestaltung(&mut app).unwrap();
+        let mut d = app.ui.dialog.take().unwrap();
+        d.fields.insert("vorschau".into(), json!(true));
+        d.fields.insert("schriftText".into(), json!(12.6));
+        vorschau(&mut app, &mut d);
+        d.fields.insert("schriftDatum".into(), json!(15.0));
+        vorschau(&mut app, &mut d);
+        gestaltung_uebernehmen(&mut app, &d).unwrap();
+        let groesse = |app: &DesignApp, name: &str| {
+            app.session.active().unwrap().doc.styles.paragraph.iter().find(|s| s.name == name).and_then(|s| s.chars.size)
+        };
+        assert_eq!(groesse(&app, "Chat Sie"), Some(12.6));
+        assert_eq!(groesse(&app, "Datum"), Some(15.0));
+        let verhaeltnis = |vorher: &[f64], nachher: &[f64]| nachher.iter().zip(vorher).map(|(n, v)| n / v).collect::<Vec<_>>();
+        for f in verhaeltnis(&emoji0, &hoehen(&app, "Emoji")) {
+            assert!((f - 1.5).abs() < 1e-3, "Emojis wie der Text um das 1,5-Fache: {f}");
+        }
+        for f in verhaeltnis(&deko0, &hoehen(&app, "Verzierung")) {
+            assert!((f - 1.5).abs() < 1e-3, "Verzierungen wie das Datum um das 1,5-Fache: {f}");
+        }
     }
 
     fn gleiche_person(app: &DesignApp) -> Option<f64> {

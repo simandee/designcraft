@@ -69,6 +69,11 @@ URL_RE = re.compile(r"https?://\S+")
 DEKO_HOEHE = {"balken": 6.5, "punkte": 7.5, "rauten": 8.6, "raster": 8.8, "sterne": 11.2, "pillen": 7.8, "kreuze": 10.5,
               "ringe": 12.2, "dreiecke": 8.0, "zickzack": 6.5, "treppe": 11.7, "blumen": 11.0, "konfetti": 8.6, "streifen": 9.0}
 DATUM_PT = 10
+# Schriftgrößen (pt) der Bestandteile, im Jahresbuch-Menü einstellbar (stil.json "schrift"); die
+# übrigen Größen hängen daran: Emojis am Nachrichtentext, Verzierungen am Datum, Zitat-Name und
+# Hinweise am Zitat-Text. Gleiche Werte im Jahresbuch-Menü (Rust).
+SCHRIFT = {"text": 8.4, "zeit": 6.0, "datum": DATUM_PT, "zitat": 7.2}
+ZITAT_NAME, HINWEIS = 6.8 / 7.2, 7.4 / 7.2
 # Standard-Abstände (pt), im Jahresbuch-Menü einstellbar (stil.json "abstand"): Datum -> erste
 # Nachricht, zwischen Nachrichten derselben Person, bei einem Personenwechsel.
 # Dazu "vor_datum": letzte Nachricht -> nächstes Datum (gesamt).
@@ -296,14 +301,17 @@ class Importer:
 
     # ---------------------------------------------------------------- Text mit Emojis
     def lauf(self, a, text, cs=None, emoji_pt=EMOJI_PT):
-        """Text in Absatz `a` schreiben; Emojis werden zu Bildern, Links umbrechbar."""
+        """Text in Absatz `a` schreiben; Emojis werden zu Bildern, Links umbrechbar. Emojis wachsen
+        mit dem Nachrichtentext (`emoji_pt` gilt für die Standardgröße)."""
         text = bereinigen(text)
+        f = self.groesse("text") / SCHRIFT["text"]
         pos = 0
         for e0, e1 in self.emojis.finden(text):
             self._klartext(a, text[pos:e0], cs)
             png = self.emojis.png(text[e0:e1])
             if png:
-                a.objekt({"art": "bild", "pfad": png, "b": emoji_pt, "h": emoji_pt, "fit": "fitProportionally", "y": -1.6})
+                a.objekt({"art": "bild", "pfad": png, "b": emoji_pt * f, "h": emoji_pt * f, "fit": "fitProportionally",
+                          "y": round(-1.6 * f, 3), "label": "Emoji"})
             pos = e1
         self._klartext(a, text[pos:], cs)
 
@@ -366,7 +374,8 @@ class Importer:
         self.deko_verlauf.append(art)
         tausch = rnd.random() < 0.5
         a = Absatz("Datum")
-        y = round(DEKO_MITTE - DEKO_HOEHE[art] / 2, 2)
+        f = self.groesse("datum") / DATUM_PT  # Verzierungen wachsen mit dem Datum
+        y = round((DEKO_MITTE - DEKO_HOEHE[art] / 2) * f, 3)
         a.objekt({"art": "deko", "deko": art, "spiegel": False, "tausch": tausch, "y": y})
         a.text("\u2002" + datumszeile(d) + "\u2002")
         a.objekt({"art": "deko", "deko": art, "spiegel": True, "tausch": tausch, "y": y})
@@ -549,6 +558,10 @@ class Importer:
         return [("Farbe Ich", st.get("farbe_ich", "#E8493A")), ("Farbe Sie", st.get("farbe_sie", "#3554E0")),
                 ("Textfarbe", st.get("farbe_text", "#1E2A5A")), ("Papier", st.get("farbe_papier", "#F6F0E3"))]
 
+    def groesse(self, teil):
+        """Schriftgröße (pt) eines Bestandteils aus stil.json "schrift"."""
+        return float(self.stil.get("schrift", {}).get(teil, SCHRIFT[teil]))
+
     def abstaende(self):
         """Absatzabstände (pt) aus stil.json "abstand" -> (vor der Blase, nach der Blase, gleiche
         Person, vor dem Datum). Vor der Blase steht der Abstand Datum -> erste Nachricht; bei einem
@@ -571,7 +584,7 @@ class Importer:
         R = lambda r: [{"shape": "rounded", "size": r}] * 4
         ecken = blasen_ecken
         vor, nach, gleich, datum_vor = self.abstaende()
-        chars = {"fontFamily": self.schrift, "fontStyle": "Regular", "size": 8.4, "fill": "Textfarbe"}
+        chars = {"fontFamily": self.schrift, "fontStyle": "Regular", "size": self.groesse("text"), "fill": "Textfarbe"}
         blase = {"align": "left", "leftIndent": 7, "rightIndent": BLASE_EINZUG, "spaceBefore": vor, "spaceAfter": nach, "sameParaStyleSpacing": gleich,
                  "hyphenate": True, "keepLinesTogether": True, "keepAllLines": True,
                  "shadingOn": True, "shadingColor": "Sie · Blase", "shadingTint": 1, "shadingOffsets": [3, 6, 4, 6],
@@ -616,7 +629,7 @@ class Importer:
         s("style.paragraph.create", name="Datum", para={"align": "center", "spaceBefore": datum_vor, "spaceAfter": 0, "keepWithNext": 1,
           "shadingOn": True, "shadingColor": "[None]", "shadingWidth": "text", "shadingOffsets": [3, 4, 3, 4],
           "shadingSpeckle": float(self.stil.get("korn_datum", 0.4)), "shadingSpeckleColor": "Papier", "shadingSpeckleOverText": True},
-          chars={"fontFamily": "Fraunces", "fontStyle": "SemiBold", "size": 10, "fill": "Farbe Sie"})
+          chars={"fontFamily": "Fraunces", "fontStyle": "SemiBold", "size": self.groesse("datum"), "fill": "Farbe Sie"})
         # Riso-Schatten der Spaltenboxen (Flächen über die ganze Rahmenhöhe)
         H = SEITE_H - RAND["bottom"] - RAND["top"] + 2 * BOX_RAND
         flaeche = {"shadingOn": True, "shadingWidth": "column", "shadingTop": "leading", "shadingBottom": "descent",
@@ -627,11 +640,12 @@ class Importer:
           para={**flaeche, "shadingColor": "Spalte · Schatten", "shadingSpeckle": float(self.stil.get("sprenkel", {}).get("rahmen", 1.0))})
         s("style.paragraph.create", name="Seitenzahl", para={"align": "center"},
           chars={"fontFamily": self.schrift, "fontStyle": "Bold", "size": 18, "fill": "Farbe Ich"})
-        s("style.character.create", name="Zeit", chars={"size": 6, "fontStyle": "Medium"})
-        s("style.character.create", name="Zitat Name Ich", chars={"size": 6.8, "fontStyle": "Bold", "fill": "Farbe Ich"})
-        s("style.character.create", name="Zitat Name Sie", chars={"size": 6.8, "fontStyle": "Bold", "fill": "Farbe Sie"})
-        s("style.character.create", name="Zitat Text", chars={"size": 7.2, "fontStyle": "Light"})
-        s("style.character.create", name="Hinweis", chars={"size": 7.4, "fontStyle": "Light", "fill": "Textfarbe"})
+        z = self.groesse("zitat")
+        s("style.character.create", name="Zeit", chars={"size": self.groesse("zeit"), "fontStyle": "Medium"})
+        s("style.character.create", name="Zitat Name Ich", chars={"size": round(z * ZITAT_NAME, 2), "fontStyle": "Bold", "fill": "Farbe Ich"})
+        s("style.character.create", name="Zitat Name Sie", chars={"size": round(z * ZITAT_NAME, 2), "fontStyle": "Bold", "fill": "Farbe Sie"})
+        s("style.character.create", name="Zitat Text", chars={"size": z, "fontStyle": "Light"})
+        s("style.character.create", name="Hinweis", chars={"size": round(z * HINWEIS, 2), "fontStyle": "Light", "fill": "Textfarbe"})
         s("style.character.create", name="Link", chars={"underline": True, "fill": "Textfarbe"})
 
     def rausch_einstellung(self, flaeche):
@@ -901,12 +915,21 @@ class Importer:
                 self.s("object.stroke", swatch="[None]", ids=[f"${k}.id"])
                 teile.append(f"${k}.id")
             g = self.s("object.group", ids=teile) if len(teile) > 1 else None
-            return f"${g}.id" if g is not None else teile[0]
+            ref = f"${g}.id" if g is not None else teile[0]
+            f = self.groesse("datum") / DATUM_PT
+            if abs(f - 1) > 1e-6:
+                self.s("transform.scale", sx=f, sy=f, ids=[ref])
+            # Markiert, damit die Chat-Gestaltung sie mit dem Datum skaliert
+            self.s("object.label", label="Verzierung", ids=[ref])
+            return ref
         if obj["art"] == "bild":
             i = self.s("frame.create", rect=[X, Y, X + obj["b"], Y + obj["h"]], content="graphic")
             ref = f"${i}.id"
             self.s("file.place", path=obj["pfad"], frame=ref)
             self.s("object.fit", mode=obj["fit"], ids=[ref]); self.s("object.stroke", swatch="[None]", ids=[ref])
+            if obj.get("label"):
+                # Markiert (Emojis), damit die Chat-Gestaltung sie mit der Schrift skaliert
+                self.s("object.label", label=obj["label"], ids=[ref])
             if obj["fit"] == "fillProportionally" and not obj.get("emoji"):
                 self.s("object.cornerOptions", shape="rounded", size=4, ids=[ref])
             teile = [ref]
