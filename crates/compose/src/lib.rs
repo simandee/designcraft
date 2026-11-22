@@ -22,6 +22,7 @@ mod notes;
 pub mod optical;
 mod outline;
 mod overlay;
+pub mod pagenum;
 mod parabox;
 mod placed;
 mod reuse;
@@ -286,6 +287,10 @@ pub struct Deco {
     /// a box holds tens of thousands, and a dot takes a thirtieth of the memory of its circle.
     /// [`Deco::speck_path`] makes the circles when they are drawn.
     pub dots: Option<std::sync::Arc<[[f32; 3]]>>,
+    /// A colour of its own instead of the swatch `color` (layered page numbers' mixed colours).
+    pub value: Option<designcraft_color::Color>,
+    /// Part of a layered page number ([`pagenum`]).
+    pub page_number: bool,
 }
 
 impl Deco {
@@ -3744,7 +3749,7 @@ fn compose_run(
         pi += 1;
     }
     pass.trace(reuse::plain_end(&span_paras, &split_paras, &boxes), &snaps, info).map(|trace| {
-        let out = finish_composition(FinishInput {
+        let mut out = finish_composition(FinishInput {
             doc,
             story,
             frames,
@@ -3757,6 +3762,7 @@ fn compose_run(
             grid_paras: &grid_paras,
             styles_tab,
         });
+        pagenum::apply(doc, story, &mut out, db);
         (out, trace)
     })
 }

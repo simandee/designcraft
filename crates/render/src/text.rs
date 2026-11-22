@@ -391,7 +391,7 @@ impl Renderer {
                 draw_grain(ctx, m, d, g);
                 continue;
             }
-            if let Some(c) = doc.resolve_color(&d.color, d.tint) {
+            if let Some(c) = d.value.or_else(|| doc.resolve_color(&d.color, d.tint)) {
                 ctx.set_transform(m);
                 ctx.set_paint(color_of(&c, 1.0));
                 match (&d.path, d.speck_path(Some(vis))) {
@@ -483,7 +483,7 @@ impl Renderer {
             if !rect_overlaps(d.rect, vis) || d.nonprinting && f.opts.printing_only {
                 continue;
             }
-            if let Some(c) = doc.resolve_color(&d.color, d.tint) {
+            if let Some(c) = d.value.or_else(|| doc.resolve_color(&d.color, d.tint)) {
                 ctx.set_transform(m);
                 ctx.set_paint(color_of(&c, 1.0));
                 match (&d.path, d.speck_path(Some(vis))) {

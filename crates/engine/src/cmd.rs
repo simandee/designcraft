@@ -42,6 +42,7 @@ mod load_styles;
 mod mathexpr;
 mod media;
 mod notes;
+mod pagenum;
 mod object;
 pub use object::text_frame_options_frames;
 mod overrides;
@@ -232,6 +233,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(variables::specs());
         v.extend(toc::specs());
         v.extend(notes::specs());
+        v.extend(pagenum::specs());
         v.extend(xref::specs());
         v.extend(index::specs());
         v.extend(anchored::specs());

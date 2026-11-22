@@ -298,6 +298,8 @@ fn speckle_deco(sp: &Speckle, under: &Deco, cover: Option<&BezPath>) -> Option<D
         speckle: true,
         grain: None,
         dots: Some(dots.into()),
+        value: None,
+        page_number: false,
     })
 }
 
@@ -319,6 +321,8 @@ fn grain_deco(amount: f64, light: bool, under: &Deco) -> Deco {
         speckle: true,
         grain: Some(crate::Grain { light, opacity: opacity as f32 }),
         dots: None,
+        value: None,
+        page_number: false,
     }
 }
 
