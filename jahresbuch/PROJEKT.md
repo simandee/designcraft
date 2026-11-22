@@ -255,13 +255,15 @@ Meldung vorher); Einfügen war mehrere Rückgängig-Schritte ohne Rückweg; Zeil
 Bildunterschriften verschoben den Text; Emojis in Namen; neue Gruppenmitglieder; Reaktionen auf
 Fotoserien; ein ausgewähltes Chat-Foto zeigte „Neuer Chat“; Formate des Buchs wie „Datum“ galten als
 Chat; Objekte im Text bremsten bei langen Büchern jede Mausbewegung; Sprenkel brauchten ein
-Vielfaches an Speicher; PowerPoint-Export malte Sprenkel als Flächen; Emoji-Herkunft in `ASSETS.md`.
+Vielfaches an Speicher; PowerPoint-Export malte Sprenkel als Flächen; PDF/X-4 und PDF/A mit
+Rauschen auf den Blasen; Emoji-Herkunft in `ASSETS.md`. Eine zweite Gegenprüfung der Reparaturen
+fand elf weitere Punkte (u. a. echte erste/letzte Tage statt des gewählten Zeitraums im Etikett,
+Handarbeit an der Datumszeile nach einem neu aufgebauten Zeitraum, Klick-Vorrang); alle behoben.
 
 **Offen (bewusst noch nicht gemacht):**
 - **PDF-Größe:** Die Sprenkel der Spalten-Box liegen zu ~98 % unsichtbar unter der Papierfläche und
   landen trotzdem im PDF (~5 MB je Chat-Seite). Abhilfe ändert den Aufbau der Spalten-Box –
   erst mit dem User abstimmen (Varianten zeigen).
-- PDF/X-4 und PDF/A mit Rauschen auf den Blasen (Vorgabe aus): Warnungen bzw. Fehler beim Export.
 - Kleinigkeiten: Neu aufbauen mit kürzerem Zeitraum lässt leere Chat-Seiten am Ende; Pfade von
   Export und Medienordner eines Chats im Fenster nicht änderbar; Feld für Rauschen im
   Absatzschattierungs-Dialog; IDML-Export verliert das Chat-Etikett.
