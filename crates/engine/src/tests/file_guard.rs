@@ -19,6 +19,15 @@ use std::path::{Path, PathBuf};
 /// Files that may touch the file system, with why. Paths are relative to `crates/`. A file not
 /// listed here, and not a test file or test module, must not.
 const ALLOWED: &[(&str, &str)] = &[
+    (
+        "ui-egui/src/jahresbuch/mod.rs",
+        "Jahresbuch (this fork): the user's own settings file ~/Jahresbuch/stil.json, which the Jahresbuch panel reads and updates",
+    ),
+    (
+        "ui-egui/src/jahresbuch/einfuegen.rs",
+        "Jahresbuch (this fork): the WhatsApp export the user chose, and a temporary work folder for the helper program's scripts, removed afterwards",
+    ),
+    ("ui-egui/src/jahresbuch/panel.rs", "Jahresbuch (this fork): whether the WhatsApp export the user chose exists, before reading it"),
     ("engine/src/io.rs", "the checked gateway: every read and write a command makes"),
     ("engine/src/file_access.rs", "the root check itself (resolves links with the file system)"),
     ("engine/src/atomic.rs", "how a write reaches the disk; commands call it only through io::write_file and io::replace_with"),

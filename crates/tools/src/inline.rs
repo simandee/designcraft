@@ -4,7 +4,7 @@
 //! moves around the new size. Escape or a click elsewhere ends it.
 
 use designcraft_doc::{Item, SpreadRef, StoryId};
-use designcraft_geom::{Point, Rect};
+use designcraft_geom::{Affine, Point, Rect};
 
 use crate::ToolContext;
 
@@ -22,6 +22,11 @@ const HANDLE_PX: f64 = 5.0;
 /// Every anchored object shown in the visible text frames: (object, its bounds on the canvas).
 /// Frontmost last.
 fn shown(cx: &ToolContext) -> Vec<(Inline, Rect)> {
+    placed(cx).into_iter().map(|(o, m, size)| (o, m.transform_rect_bbox(Rect::from_origin_size(Point::ZERO, size)))).collect()
+}
+
+/// Every anchored object shown: (object, the transform from its space to the canvas, its size).
+fn placed(cx: &ToolContext) -> Vec<(Inline, Affine, designcraft_geom::Size)> {
     let mut out = Vec::new();
     for slot in &cx.layout.slots {
         let SpreadRef::Doc(_) = slot.spread else { continue };
@@ -48,8 +53,7 @@ fn shown(cx: &ToolContext) -> Vec<(Inline, Rect)> {
             let Some(ft) = cs.frame(it.id) else { continue };
             let m = slot.xf * cx.doc.parent_xf(&loc) * cx.doc.text_xf(it);
             for o in &ft.objects {
-                let r = Rect::from_origin_size(o.origin, o.size);
-                out.push((Inline { story, index: o.index }, m.transform_rect_bbox(r)));
+                out.push((Inline { story, index: o.index }, m * Affine::translate(o.origin.to_vec2()), o.size.into()));
             }
         }
     }
@@ -103,4 +107,79 @@ pub fn width_for(start: Rect, h: usize, p: Point, width: f64) -> Option<f64> {
 /// The item of object `o` (its width in points is that of its bounds).
 pub fn item<'a>(cx: &'a ToolContext, o: Inline) -> Option<&'a Item> {
     cx.doc.story(o.story)?.objects.get(o.index).map(|a| &a.item)
+}
+
+/// The transform from object `o`'s space to the canvas (where its first frame shows it).
+pub fn placement(cx: &ToolContext, o: Inline) -> Option<Affine> {
+    placed(cx).into_iter().find(|(i, _, _)| *i == o).map(|(_, m, _)| m)
+}
+
+fn object<'a>(cx: &'a ToolContext, o: Inline) -> Option<&'a designcraft_doc::AnchoredObject> {
+    cx.doc.story(o.story)?.objects.get(o.index).map(AsRef::as_ref)
+}
+
+/// Where object `o`'s picture frame shows on the canvas (the object's bounds when it has none).
+pub fn frame_rect(cx: &ToolContext, o: Inline) -> Option<Rect> {
+    let m = placement(cx, o)?;
+    match object(cx, o)?.picture_rect() {
+        Some(r) => Some(m.transform_rect_bbox(r)),
+        None => bounds(cx, o),
+    }
+}
+
+/// Where object `o`'s whole picture shows on the canvas (also the part its frame crops).
+pub fn content_rect(cx: &ToolContext, o: Inline) -> Option<Rect> {
+    Some(placement(cx, o)?.transform_rect_bbox(object(cx, o)?.picture_content()?.0))
+}
+
+/// The content grabber of object `o` (the middle of its picture frame), when it has a picture and
+/// is large enough on screen to drag around the grabber.
+pub fn grabber(cx: &ToolContext, o: Inline) -> Option<Point> {
+    object(cx, o)?.picture_content()?;
+    let r = frame_rect(cx, o)?;
+    let min = cx.tol(GRABBER_PX * 3.0);
+    (r.width() >= min && r.height() >= min).then(|| r.center())
+}
+
+/// Is `p` on object `o`'s content grabber?
+pub fn on_grabber(cx: &ToolContext, o: Inline, p: Point) -> bool {
+    grabber(cx, o).is_some_and(|c| (c - p).hypot() <= cx.tol(GRABBER_PX))
+}
+
+/// Grab radius of the content grabber, in screen pixels (as for frames on the page).
+const GRABBER_PX: f64 = 9.0;
+
+/// Handle `h` of `start` (canvas) dragged to `p`: the box with that side or corner moved there,
+/// the opposite one kept; at least `min` wide and tall.
+pub fn dragged_rect(start: Rect, h: usize, p: Point, min: f64) -> Rect {
+    let mut r = start;
+    if matches!(h, 0 | 6 | 7) {
+        r.x0 = p.x.min(r.x1 - min);
+    }
+    if matches!(h, 2..=4) {
+        r.x1 = p.x.max(r.x0 + min);
+    }
+    if matches!(h, 0..=2) {
+        r.y0 = p.y.min(r.y1 - min);
+    }
+    if matches!(h, 4..=6) {
+        r.y1 = p.y.max(r.y0 + min);
+    }
+    r
+}
+
+/// The corner or side that stays while handle `h` of `r` is dragged.
+pub fn opposite(r: Rect, h: usize) -> Point {
+    crate::select::handles(r)[(h + 4) % 8]
+}
+
+/// Content grabbers on show for objects in text: the selected one's and the hovered one's.
+pub fn grabbers(cx: &ToolContext, hover: Option<Point>) -> Vec<Point> {
+    let mut out: Vec<Inline> = cx.selection.inline_object().map(|s| Inline { story: s.story, index: s.index }).into_iter().collect();
+    if let Some((o, _)) = hover.and_then(|p| at(cx, p))
+        && !out.contains(&o)
+    {
+        out.push(o);
+    }
+    out.into_iter().filter_map(|o| grabber(cx, o)).collect()
 }

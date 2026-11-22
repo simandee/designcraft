@@ -300,7 +300,20 @@ pub fn specs() -> Vec<CommandSpec> {
             s.typing_format = None;
             Ok(json!({"redone": e.label}))
         }),
-        cmd!(noundo "selection.set", "Select", [], None, "{ids: [id], add?: bool, content?: bool, anchors?: [[id, subpath, index]] (Direct Selection: the selected anchor points; their paths are selected too)}", has_doc, |s, p| {
+        cmd!(noundo "selection.set", "Select", [], None, "{ids: [id], add?: bool, content?: bool, anchors?: [[id, subpath, index]] (Direct Selection: the selected anchor points; their paths are selected too), inline?: {story, index, content?} (an object anchored in text, as the whole selection; content: its picture inside the frame)}", has_doc, |s, p| {
+            if let Some(o) = p.get("inline").filter(|v| !v.is_null()) {
+                let story = o.get("story").and_then(Value::as_u64).map(designcraft_doc::StoryId);
+                let index = o.get("index").and_then(Value::as_u64).map(|k| k as usize);
+                let st = s.doc_mut()?;
+                let (Some(story), Some(index)) = (story, index) else { return Err(super::bad("selection.set", "inline: give {story, index}")) };
+                if st.doc.story(story).is_none_or(|t| index >= t.objects.len()) {
+                    return Err(super::bad("selection.set", "inline: no such anchored object"));
+                }
+                let content = o.get("content").and_then(Value::as_bool).unwrap_or(false);
+                st.selection = Selection { inline: Some(designcraft_doc::InlineSel { story, index, content }), ..Default::default() };
+                st.bump_revision();
+                return ok();
+            }
             let mut ids = ids_param(p, "ids").unwrap_or_default();
             let add = bool_or(p, "add", false);
             let content = bool_or(p, "content", false);

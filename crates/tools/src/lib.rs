@@ -428,6 +428,12 @@ pub enum Overlay {
     /// An object anchored in text, selected with the Selection tool (canvas rect): its bounds and
     /// eight handles.
     InlineHandles(Rect),
+    /// The picture of a selected object in text, selected inside its frame (canvas rects): the
+    /// frame's outline, and the whole picture's box with eight handles in the content colour.
+    InlineContent {
+        frame: Rect,
+        content: Rect,
+    },
     /// A small tag whose bottom-left is at `p` (the Page tool's liquid page rule; English, the UI
     /// translates it).
     Tag {

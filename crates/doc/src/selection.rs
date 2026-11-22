@@ -71,6 +71,17 @@ impl TextSel {
     }
 }
 
+/// An object anchored in a story's text (a picture in a chat line), selected like a page item:
+/// index `index` among the story's anchored objects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InlineSel {
+    pub story: StoryId,
+    pub index: usize,
+    /// The picture inside the object's frame, not the object (its content grabber pressed).
+    #[serde(default)]
+    pub content: bool,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Selection {
@@ -100,11 +111,19 @@ pub struct Selection {
     /// the other.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<GuideSel>,
+    /// A selected object in text. It holds only while nothing else is selected (see
+    /// [`Selection::inline_object`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline: Option<InlineSel>,
 }
 
 impl Selection {
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty() && self.text.is_none() && self.cells.is_none()
+        self.items.is_empty() && self.text.is_none() && self.cells.is_none() && self.inline.is_none()
+    }
+    /// The selected object in text, while it is the whole selection.
+    pub fn inline_object(&self) -> Option<InlineSel> {
+        self.inline.filter(|_| self.items.is_empty() && self.text.is_none() && self.cells.is_none())
     }
     pub fn len(&self) -> usize {
         self.items.len()

@@ -30,16 +30,34 @@ use crate::corners::{self, LiveFrame};
 use crate::thread::Loaded;
 use crate::{Action, Cursor, Gesture, Mods, Overlay, PointerEvent, PointerKind, SnapRequest, Tool, ToolContext, ToolKey, rect_json, spread_json};
 
+/// What dragging a selected object in text does.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum InlineDrag {
+    /// A frame handle: the picture frame takes the new box, the picture stays (crops).
+    Crop(usize),
+    /// A frame handle with Cmd: the whole object scales, keeping its proportions.
+    Scale(usize),
+    /// The picture moves inside its frame.
+    MoveContent,
+    /// A handle of the picture: it scales inside the frame, keeping its proportions.
+    ScaleContent(usize),
+}
+
 #[derive(Clone, Debug)]
 enum Drag {
     None,
-    /// A handle of a selected object in text being dragged: it resizes the object.
+    /// A selected object in text being changed: its frame cropped or scaled at a handle, or its
+    /// picture moved or scaled inside the frame.
     Inline {
         object: crate::inline::Inline,
-        handle: usize,
-        /// Its canvas bounds and width (pt) when the drag began.
+        how: InlineDrag,
+        /// Where the press was, the canvas box being dragged, the transform from the object's
+        /// space to the canvas, and the object's width (pt) and picture scale when it began.
+        press: Point,
         start: Rect,
+        place: designcraft_geom::Affine,
         width: f64,
+        scale: (f64, f64),
     },
     Pending {
         start: Point,
@@ -336,8 +354,6 @@ pub struct SelectionTool {
     loaded: Option<Loaded>,
     /// Frame whose live corners are being edited (diamonds shown).
     live: Option<ItemId>,
-    /// An object in text selected with a click (see [`crate::inline`]).
-    inline: Option<crate::inline::Inline>,
 }
 
 impl SelectionTool {
@@ -352,7 +368,6 @@ impl SelectionTool {
             anchor_release: None,
             loaded: None,
             live: None,
-            inline: None,
         }
     }
 
@@ -1273,50 +1288,127 @@ impl SelectionTool {
     }
 }
 
+/// The object in text that is the selection.
+fn selected_inline(cx: &ToolContext) -> Option<crate::inline::Inline> {
+    cx.selection.inline_object().map(|o| crate::inline::Inline { story: o.story, index: o.index })
+}
+
 impl SelectionTool {
-    /// Where the selected object in text shows, while it is the selection (nothing else is
-    /// selected and the object is still there).
+    /// The canvas box whose handles show for the selected object in text: its picture frame, or
+    /// the picture while that is selected.
     fn inline_shown(&self, cx: &ToolContext) -> Option<Rect> {
-        let o = self.inline?;
-        if !cx.selection.items.is_empty() || cx.selection.text.is_some() {
-            return None;
+        let o = selected_inline(cx)?;
+        if cx.selection.inline_object().is_some_and(|s| s.content) {
+            crate::inline::content_rect(cx, o)
+        } else {
+            crate::inline::frame_rect(cx, o)
         }
-        crate::inline::bounds(cx, o)
     }
 
-    /// Objects in text: a press on a handle of the selected one starts resizing it, a press on one
-    /// selects it (and nothing else), any other press ends it and goes on as usual.
+    /// Start dragging the selected object in text.
+    fn inline_drag(&mut self, cx: &ToolContext, o: crate::inline::Inline, how: InlineDrag, press: Point, start: Rect) -> Option<()> {
+        let place = crate::inline::placement(cx, o)?;
+        let a = cx.doc.story(o.story)?.objects.get(o.index)?;
+        let scale = a.picture_content().map_or((1.0, 1.0), |(_, s)| s);
+        self.drag = Drag::Inline { object: o, how, press, start, place, width: a.size().0, scale };
+        Some(())
+    }
+
+    /// Objects in text, as frames on the page: a click selects one (and nothing else); its frame
+    /// handles crop it (with Cmd they scale it); its content grabber, or a double click, selects
+    /// the picture inside, which then moves by dragging and scales at its own handles; any other
+    /// press ends it and goes on as usual.
     fn inline_pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Option<Vec<Action>> {
         let p = ev.pos;
+        let sel = cx.selection.inline_object();
+        let set = |o: crate::inline::Inline, content: bool| {
+            Action::Exec("selection.set".into(), json!({"inline": {"story": o.story.0, "index": o.index, "content": content}}))
+        };
         match ev.kind {
+            PointerKind::Down | PointerKind::DoubleClick if ev.click_count() == 2 => {
+                // A double click on a picture in text goes between its frame and the picture.
+                let (o, _) = crate::inline::at(cx, p)?;
+                crate::inline::content_rect(cx, o)?;
+                self.drag = Drag::None;
+                let content = sel.is_some_and(|s| s.story == o.story && s.index == o.index && !s.content);
+                Some(vec![set(o, content)])
+            }
             PointerKind::Down if ev.click_count() == 1 => {
-                if let Some(o) = self.inline
-                    && let Some(r) = self.inline_shown(cx)
-                    && let Some(handle) = crate::inline::handle_at(cx, r, p)
-                {
-                    let width = crate::inline::item(cx, o)?.bounds().width();
-                    self.drag = Drag::Inline { object: o, handle, start: r, width };
-                    return Some(vec![Action::Begin("Resize".into())]);
+                if let (Some(s), Some(o)) = (sel, selected_inline(cx)) {
+                    if s.content {
+                        if let Some(r) = crate::inline::content_rect(cx, o)
+                            && let Some(h) = crate::inline::handle_at(cx, r, p)
+                        {
+                            self.inline_drag(cx, o, InlineDrag::ScaleContent(h), p, r)?;
+                            return Some(vec![Action::Begin("Scale Content".into())]);
+                        }
+                        if crate::inline::frame_rect(cx, o).is_some_and(|r| r.contains(p)) {
+                            let r = crate::inline::content_rect(cx, o)?;
+                            self.inline_drag(cx, o, InlineDrag::MoveContent, p, r)?;
+                            return Some(vec![Action::Begin("Move Content".into())]);
+                        }
+                    } else {
+                        if crate::inline::on_grabber(cx, o, p) {
+                            let r = crate::inline::content_rect(cx, o)?;
+                            self.inline_drag(cx, o, InlineDrag::MoveContent, p, r)?;
+                            return Some(vec![set(o, true), Action::Begin("Move Content".into())]);
+                        }
+                        if let Some(r) = crate::inline::frame_rect(cx, o)
+                            && let Some(h) = crate::inline::handle_at(cx, r, p)
+                        {
+                            // A picture's frame crops; with Cmd, or an object without a picture, it scales.
+                            let crop = !ev.mods.cmd && crate::inline::content_rect(cx, o).is_some();
+                            let how = if crop { InlineDrag::Crop(h) } else { InlineDrag::Scale(h) };
+                            self.inline_drag(cx, o, how, p, r)?;
+                            return Some(vec![Action::Begin(if crop { "Crop" } else { "Resize" }.into())]);
+                        }
+                    }
                 }
                 // Shift and Cmd clicks keep their usual meaning (add to the selection, select
                 // through); a plain click picks the object.
                 if !ev.mods.shift && !ev.mods.cmd
                     && let Some((o, _)) = crate::inline::at(cx, p)
                 {
-                    self.inline = Some(o);
                     self.drag = Drag::None;
-                    return Some(vec![Action::Exec("selection.set".into(), json!({"ids": []}))]);
+                    if crate::inline::on_grabber(cx, o, p)
+                        && let Some(r) = crate::inline::content_rect(cx, o)
+                    {
+                        self.inline_drag(cx, o, InlineDrag::MoveContent, p, r)?;
+                        return Some(vec![set(o, true), Action::Begin("Move Content".into())]);
+                    }
+                    return Some(vec![set(o, false)]);
                 }
-                self.inline = None;
                 None
             }
             PointerKind::Drag => match self.drag {
-                Drag::Inline { object, handle, start, width } => {
-                    let w = crate::inline::width_for(start, handle, p, width)?;
-                    Some(vec![Action::Preview(
-                        "anchored.resize".into(),
-                        json!({"story": object.story.0, "index": object.index, "width": w}),
-                    )])
+                Drag::Inline { object, how, press, start, place, width, scale } => {
+                    let inv = place.inverse();
+                    let id = json!({"story": object.story.0, "index": object.index});
+                    let params = |extra: serde_json::Value| {
+                        let mut v = id.clone();
+                        if let (Some(a), Some(b)) = (v.as_object_mut(), extra.as_object()) {
+                            a.extend(b.clone());
+                        }
+                        v
+                    };
+                    let (cmd, p) = match how {
+                        InlineDrag::Crop(h) => {
+                            let r = inv.transform_rect_bbox(crate::inline::dragged_rect(start, h, p, 0.0));
+                            let r = Rect::new(r.x0, r.y0, r.x1.max(r.x0 + 4.0), r.y1.max(r.y0 + 4.0));
+                            ("anchored.frame", params(json!({"rect": [r.x0, r.y0, r.x1, r.y1]})))
+                        }
+                        InlineDrag::Scale(h) => ("anchored.resize", params(json!({"width": crate::inline::width_for(start, h, p, width)?}))),
+                        InlineDrag::MoveContent => {
+                            let d = inv * p - inv * press;
+                            ("anchored.content", params(json!({"dx": d.x, "dy": d.y})))
+                        }
+                        InlineDrag::ScaleContent(h) => {
+                            let f = crate::inline::width_for(start, h, p, start.width())? / start.width();
+                            let about = inv * crate::inline::opposite(start, h);
+                            ("anchored.content", params(json!({"scale": [scale.0 * f, scale.1 * f], "about": [about.x, about.y]})))
+                        }
+                    };
+                    Some(vec![Action::Preview(cmd.into(), p)])
                 }
                 _ => None,
             },
@@ -1462,15 +1554,17 @@ impl Tool for SelectionTool {
     }
 
     fn key(&mut self, cx: &ToolContext, key: ToolKey, mods: Mods) -> Vec<Action> {
-        if let Some(o) = self.inline.filter(|_| cx.selection.items.is_empty()) {
+        if let Some(o) = selected_inline(cx) {
             match key {
+                // From the picture back to its frame, and from the frame to nothing.
+                ToolKey::Escape if cx.selection.inline_object().is_some_and(|s| s.content) => {
+                    return vec![Action::Exec("selection.set".into(), json!({"inline": {"story": o.story.0, "index": o.index}}))];
+                }
                 ToolKey::Escape => {
-                    self.inline = None;
-                    return vec![Action::Handled];
+                    return vec![Action::Exec("selection.set".into(), json!({"ids": []}))];
                 }
                 // Delete takes the object out of the text, as Delete does with a selected object.
                 ToolKey::Delete | ToolKey::Backspace => {
-                    self.inline = None;
                     return vec![Action::Exec("anchored.delete".into(), json!({"story": o.story.0, "index": o.index}))];
                 }
                 _ => {}
@@ -1545,8 +1639,14 @@ impl Tool for SelectionTool {
             Drag::None | Drag::Bracket { .. } => brackets(cx),
             _ => vec![],
         };
-        if let Some(r) = self.inline_shown(cx) {
-            out.push(Overlay::InlineHandles(r));
+        if let Some(o) = selected_inline(cx) {
+            if cx.selection.inline_object().is_some_and(|s| s.content) {
+                if let (Some(frame), Some(content)) = (crate::inline::frame_rect(cx, o), crate::inline::content_rect(cx, o)) {
+                    out.push(Overlay::InlineContent { frame, content });
+                }
+            } else if let Some(r) = self.inline_shown(cx) {
+                out.push(Overlay::InlineHandles(r));
+            }
         }
         // The loaded text cursor places text: the frame's corners aren't edited meanwhile.
         if !self.direct && self.loaded.and_then(|l| l.resolve(cx.doc)).is_none() {
@@ -1560,14 +1660,26 @@ impl Tool for SelectionTool {
     }
 
     fn cursor(&self, cx: &ToolContext, p: Point, _m: Mods) -> Cursor {
-        if let Drag::Inline { handle, .. } = self.drag {
-            return handle_cursor(handle);
+        if let Drag::Inline { how, .. } = self.drag {
+            return match how {
+                InlineDrag::Crop(h) | InlineDrag::Scale(h) | InlineDrag::ScaleContent(h) => handle_cursor(h),
+                InlineDrag::MoveContent => Cursor::HandGrab,
+            };
         }
         if matches!(self.drag, Drag::None)
             && let Some(r) = self.inline_shown(cx)
             && let Some(h) = crate::inline::handle_at(cx, r, p)
         {
             return handle_cursor(h);
+        }
+        // Over the selected picture in text (or its frame's content grabber): the hand that moves it.
+        if matches!(self.drag, Drag::None)
+            && let Some(o) = selected_inline(cx)
+        {
+            let content = cx.selection.inline_object().is_some_and(|s| s.content);
+            if crate::inline::on_grabber(cx, o, p) || (content && crate::inline::frame_rect(cx, o).is_some_and(|r| r.contains(p))) {
+                return Cursor::Hand;
+            }
         }
         if let Drag::Move { content: true, .. } = self.drag {
             return Cursor::HandGrab;

@@ -121,6 +121,55 @@ impl AnchoredObject {
         let b = self.item.bounds();
         (b.width(), b.height())
     }
+
+    /// The object's picture frame: the object itself when it holds a graphic, or the first
+    /// graphic frame of its group (a chat photo with its offset outline and play button).
+    /// (Index in the group, if any; the transform from the frame's space to the object's.)
+    pub fn picture_frame(&self) -> Option<(Option<usize>, designcraft_geom::Affine)> {
+        if matches!(self.item.content, crate::item::Content::Graphic(_)) {
+            return Some((None, self.item.xf));
+        }
+        let k = self.item.children().iter().position(|c| matches!(c.content, crate::item::Content::Graphic(_)))?;
+        Some((Some(k), self.item.xf * self.item.children()[k].xf))
+    }
+
+    /// The picture frame item.
+    pub fn picture(&self) -> Option<&Item> {
+        match self.picture_frame()?.0 {
+            None => Some(&self.item),
+            Some(k) => self.item.children().get(k).map(AsRef::as_ref),
+        }
+    }
+
+    /// The picture frame item, to change it.
+    pub fn picture_mut(&mut self) -> Option<&mut Item> {
+        match self.picture_frame()?.0 {
+            None => Some(&mut self.item),
+            Some(k) => self.item.children_mut()?.get_mut(k).map(std::sync::Arc::make_mut),
+        }
+    }
+
+    /// The picture frame's box in the object's space.
+    pub fn picture_rect(&self) -> Option<designcraft_geom::Rect> {
+        let (_, xf) = self.picture_frame()?;
+        Some(xf.transform_rect_bbox(self.picture()?.inner_bounds()))
+    }
+
+    /// The whole graphic's box in the object's space (also the part the frame crops), and its
+    /// scale against its natural size (horizontal, vertical).
+    pub fn picture_content(&self) -> Option<(designcraft_geom::Rect, (f64, f64))> {
+        let (_, xf) = self.picture_frame()?;
+        let crate::item::Content::Graphic(g) = &self.picture()?.content else { return None };
+        let (w, h) = g.size;
+        let r = (xf * g.xf).transform_rect_bbox(designcraft_geom::Rect::new(0.0, 0.0, w, h));
+        (w > 0.0 && h > 0.0).then_some((r, (r.width() / w, r.height() / h)))
+    }
+
+    /// Move the whole object so its bounds start at the origin again (after its shape changed).
+    pub fn normalize(&mut self) {
+        let b = self.item.bounds();
+        self.item.xf = designcraft_geom::Affine::translate((-b.x0, -b.y0)) * self.item.xf;
+    }
 }
 
 impl Default for AnchoredObject {

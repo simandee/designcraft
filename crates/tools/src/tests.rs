@@ -2642,8 +2642,12 @@ fn selection_tool_selects_and_resizes_an_object_in_text() {
     assert!((r.width() - 40.0).abs() < 1e-6 && (r.height() - 20.0).abs() < 1e-6, "{r:?}");
     let mut t = create("selection");
     let a = t.pointer(&cx, &PointerEvent::new(PointerKind::Down, r.center().x, r.center().y));
-    assert_eq!(a, vec![Action::Exec("selection.set".into(), serde_json::json!({"ids": []}))], "a click selects the object alone");
+    let picked = serde_json::json!({"inline": {"story": sid.0, "index": 0, "content": false}});
+    assert_eq!(a, vec![Action::Exec("selection.set".into(), picked)], "a click selects the object alone");
     t.pointer(&cx, &PointerEvent::new(PointerKind::Up, r.center().x, r.center().y));
+    // The document now has it as its selection.
+    let s = Selection { inline: Some(designcraft_doc::InlineSel { story: sid, index: 0, content: false }), ..Default::default() };
+    let cx = ctx(&d, &s, &c, &l);
     assert!(t.overlays(&cx).contains(&Overlay::InlineHandles(r)), "its handles show");
     // The bottom-right handle, dragged outwards.
     assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Down, r.x1, r.y1)), vec![Action::Begin("Resize".into())]);
@@ -2657,8 +2661,79 @@ fn selection_tool_selects_and_resizes_an_object_in_text() {
     }
     assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Up, r.x1 + 40.0, r.y1 + 5.0)), vec![Action::Commit]);
     // Escape lets it go; so does a click elsewhere.
-    assert_eq!(t.key(&cx, ToolKey::Escape, Mods::default()), vec![Action::Handled]);
-    assert!(!t.overlays(&cx).iter().any(|o| matches!(o, Overlay::InlineHandles(_))));
+    assert_eq!(t.key(&cx, ToolKey::Escape, Mods::default()), vec![Action::Exec("selection.set".into(), serde_json::json!({"ids": []}))]);
+}
+
+/// A photo in text (a picture frame) is like a picture frame on the page: its frame handles crop
+/// (`anchored.frame`, the picture stays), its content grabber selects the picture and dragging
+/// moves it (`anchored.content`), the picture's own handles scale it, and Escape goes back from
+/// the picture to the frame.
+#[test]
+fn a_photo_in_text_crops_and_its_picture_moves_inside_the_frame() {
+    use designcraft_doc::{Content, Graphic, InlineSel};
+    let mut d = Document::new(&NewDocument::default());
+    let lid = d.default_layer();
+    let (_, sid) = d.add_text_frame(SpreadRef::Doc(0), Rect::new(100.0, 100.0, 400.0, 300.0), lid, "Hi there", ParaFormat::default()).unwrap();
+    let mut photo = Item::new(ItemId(9_000), lid, Shape::Rectangle, shapes::rectangle(Rect::new(0.0, 0.0, 80.0, 60.0)));
+    photo.content = Content::Graphic(Graphic {
+        layer_options: None,
+        asset: designcraft_doc::AssetId(1),
+        size: (100.0, 75.0),
+        xf: designcraft_geom::Affine::scale(0.8),
+        clip: None,
+        auto_fit: Default::default(),
+        fit_align: 4,
+        crop: [0.0; 4],
+        wrap: Default::default(),
+        fill: Default::default(),
+    });
+    d.story_mut(sid).unwrap().insert_object(3, designcraft_doc::AnchoredObject::new(photo, Default::default()));
+    let (c, l) = (Cache::new(), CanvasLayout::new(&d, false));
+    let o = inline::Inline { story: sid, index: 0 };
+    let frame = Selection { inline: Some(InlineSel { story: sid, index: 0, content: false }), ..Default::default() };
+    let cx = ctx(&d, &frame, &c, &l);
+    let r = inline::frame_rect(&cx, o).unwrap();
+    let mut t = create("selection");
+    // The right-hand handle, dragged inwards: the frame gets narrower.
+    let mid_right = Point::new(r.x1, r.center().y);
+    assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Down, mid_right.x, mid_right.y)), vec![Action::Begin("Crop".into())]);
+    match t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, r.x1 - 30.0, mid_right.y)).as_slice() {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "anchored.frame");
+            let w = p["rect"][2].as_f64().unwrap() - p["rect"][0].as_f64().unwrap();
+            assert!(w < 80.0 - 1.0, "narrower: {p}");
+        }
+        other => panic!("{other:?}"),
+    }
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Up, r.x1 - 30.0, mid_right.y));
+    // The content grabber in the middle: the picture is selected and moves with the drag.
+    let g = inline::grabber(&cx, o).expect("a grabber in the middle");
+    let a = t.pointer(&cx, &PointerEvent::new(PointerKind::Down, g.x, g.y));
+    assert!(matches!(a.as_slice(), [Action::Exec(c, p), Action::Begin(_)] if c == "selection.set" && p["inline"]["content"] == true), "{a:?}");
+    match t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, g.x + 10.0, g.y)).as_slice() {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "anchored.content");
+            assert!(p["dx"].as_f64().unwrap() > 0.0, "{p}");
+        }
+        other => panic!("{other:?}"),
+    }
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Up, g.x + 10.0, g.y));
+    // With the picture selected: its handles scale it, and Escape goes back to the frame.
+    let content = Selection { inline: Some(InlineSel { story: sid, index: 0, content: true }), ..Default::default() };
+    let cx = ctx(&d, &content, &c, &l);
+    assert!(t.overlays(&cx).iter().any(|o| matches!(o, Overlay::InlineContent { .. })), "the picture's box shows");
+    let cr = inline::content_rect(&cx, o).unwrap();
+    assert_eq!(t.pointer(&cx, &PointerEvent::new(PointerKind::Down, cr.x1, cr.y1)), vec![Action::Begin("Scale Content".into())]);
+    match t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, cr.x1 + 20.0, cr.y1 + 20.0)).as_slice() {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "anchored.content");
+            assert!(p["scale"][0].as_f64().unwrap() > 0.8, "bigger than 80 %: {p}");
+        }
+        other => panic!("{other:?}"),
+    }
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Up, cr.x1 + 20.0, cr.y1 + 20.0));
+    let back = t.key(&cx, ToolKey::Escape, Mods::default());
+    assert_eq!(back, vec![Action::Exec("selection.set".into(), serde_json::json!({"inline": {"story": sid.0, "index": 0}}))]);
 }
 
 /// Dragging a handle keeps the opposite side and the proportions: a corner follows the larger

@@ -86,6 +86,21 @@ pub(super) fn draw_tool_overlays(app: &mut DesignApp, painter: &egui::Painter, x
                     painter.rect_stroke(h, 0.0, Stroke::new(1.0, col), StrokeKind::Inside);
                 }
             }
+            // The picture inside an object in text: its frame's outline, and the whole picture's
+            // box with handles in the content colour, as InDesign shows a frame's content.
+            Overlay::InlineContent { frame, content } => {
+                let col = Color32::from_rgb(79, 153, 255);
+                painter.rect_stroke(xf.rect(frame), 0.0, Stroke::new(1.0, col.gamma_multiply(0.6)), StrokeKind::Middle);
+                let r = xf.rect(content);
+                let brown = Color32::from_rgb(196, 122, 46);
+                painter.rect_stroke(r, 0.0, Stroke::new(1.0, brown), StrokeKind::Middle);
+                for i in (0..9).filter(|i| *i != 4) {
+                    let c = pos2(r.min.x + r.width() * (i % 3) as f32 / 2.0, r.min.y + r.height() * (i / 3) as f32 / 2.0);
+                    let h = Rect::from_center_size(c, vec2(7.0, 7.0));
+                    painter.rect_filled(h, 0.0, Color32::WHITE);
+                    painter.rect_stroke(h, 0.0, Stroke::new(1.0, brown), StrokeKind::Inside);
+                }
+            }
             Overlay::Tag { p, text } => {
                 let text = crate::i18n::tr(&app.ui.language, &text).to_owned();
                 let s = xf.to_screen(p);

@@ -62,8 +62,14 @@ Bei 1.965 von 1.996 Medien-Nachrichten ist die Datei vorhanden; der Rest sind vC
   (Gegenseite bleibt, Konturen bleiben gleich dick, Text/Blase passen sich an), Entf löscht es,
   Esc oder Klick daneben hebt die Auswahl auf. Befehle `anchored.resize {story,index,width|height}`
   und `anchored.delete`; Werkzeug-Code `crates/tools/src/inline.rs` + `select.rs`.
-  Noch **nicht**: Beschneiden/Verschieben des Bildes im Rahmen, Maße im Eigenschaften-Panel,
-  Mehrfachauswahl, Kopieren.
+  **Seit 22.11.2026 wie Bildrahmen** (User-Wunsch: Rahmen und Foto getrennt wie in InDesign): die
+  Auswahl steht im Dokument (`selection.set {inline: {story, index, content?}}`); Rahmen-Anfasser
+  **beschneiden** (`anchored.frame`, das Foto bleibt, der versetzte Riso-Rahmen der Chat-Foto-Gruppe
+  geht mit), mit ⌘ skalieren sie alles (`anchored.resize`); **Inhaltsgreifer** (Kringel in der Mitte)
+  oder Doppelklick wählt das Foto im Rahmen: Ziehen verschiebt den Ausschnitt, seine (braunen)
+  Anfasser skalieren es (`anchored.content`), Esc zurück zum Rahmen. Eigenschaften-Fenster und
+  Steuerleiste: B/H des Rahmens, Skalieren %, Inhalt Skalierung %/X/Y, Einpassen (`anchored.fit`).
+  Noch nicht: Mehrfachauswahl, Kopieren.
 - `swatch.create {base, tint}` legt Tonwert-Farbfelder an.
 - Korn wird am Bildschirm nur bei **High Quality Display** (⌥⌘H) gezeichnet, bei Typical (⌥⌘Z)
   nicht – sonst ruckelt das Tippen. Export/Druck immer mit Korn.
@@ -153,7 +159,7 @@ Schritt), ☰ „Neuen Chat einfügen …“, Zeitraum-Kalender, Komma in Zahlen
 eigenem Look, „Aussehen wie Chat …“, Personenfarben, Fortsetzen (Hilfsprogramm `--anhaengen`) und
 Neu aufbauen. Die alten Dialoge sind weg; die Menüpunkte öffnen das Fenster (mit Angaben laufen sie
 direkt, für die Automatik). Ein markierter Rahmen mit Text → der neue Chat kommt auf neue Seiten.
-**Noch offen:** Personen umbenennen und zusammenlegen; Chat-Fotos im Eigenschaften-Fenster (Etappe 5).
+**Noch offen:** Personen umbenennen und zusammenlegen. (Chat-Fotos im Eigenschaften-Fenster: erledigt, siehe oben.)
 
 Ursprünglicher Plan:
 

@@ -3298,7 +3298,7 @@ fn clipping_path_options(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
-fn fitting_mode(s: &str) -> Option<designcraft_doc::Fitting> {
+pub(crate) fn fitting_mode(s: &str) -> Option<designcraft_doc::Fitting> {
     use designcraft_doc::Fitting as F;
     Some(match s {
         "none" => F::None,

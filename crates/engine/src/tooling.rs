@@ -210,7 +210,12 @@ impl Session {
         if self.tool.id() != "selection" {
             return vec![];
         }
-        self.with_ctx(view, |_, cx| designcraft_tools::select::grabbers(cx, hover).into_iter().map(|(_, c)| c).collect()).unwrap_or_default()
+        self.with_ctx(view, |_, cx| {
+            let mut out: Vec<designcraft_geom::Point> = designcraft_tools::select::grabbers(cx, hover).into_iter().map(|(_, c)| c).collect();
+            out.extend(designcraft_tools::inline::grabbers(cx, hover));
+            out
+        })
+        .unwrap_or_default()
     }
 
     pub fn tool_busy(&self) -> bool {

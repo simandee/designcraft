@@ -25,6 +25,8 @@ pub fn control_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
                         control_page(app, ui);
                     } else if text_mode {
                         control_text(app, ui);
+                    } else if let Some(sel) = app.session.active().and_then(|st| st.selection.inline_object()) {
+                        panels::properties::inline_control(app, ui, sel);
                     } else {
                         crate::object_control::show(app, ui);
                     }

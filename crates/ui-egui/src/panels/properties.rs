@@ -18,6 +18,8 @@ use crate::{DesignApp, icons};
 
 mod document;
 mod flex;
+mod inline_object;
+pub use inline_object::inline_control;
 mod links;
 mod object;
 mod object_panels;
@@ -92,6 +94,15 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
     if !st.selection.anchors.is_empty() {
         return crate::i18n::tr(&app.ui.language, "Anchor Point(s)").into();
     }
+    if let Some(o) = st.selection.inline_object() {
+        let picture = st.doc.story(o.story).and_then(|t| t.objects.get(o.index)).is_some_and(|a| a.picture_content().is_some());
+        let title = match (picture, o.content) {
+            (true, true) => "Image in Text (Content)",
+            (true, false) => "Image in Text",
+            _ => "Object in Text",
+        };
+        return crate::i18n::tr(&app.ui.language, title).into();
+    }
     if info.is_none() && !st.selection.guides.is_empty() {
         return crate::i18n::tr(&app.ui.language, "Ruler Guide").into();
     }
@@ -158,6 +169,10 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         if let Some((spread, page)) = crate::canvas::page_target(app) {
             page_sections(app, ui, spread, page);
         }
+        return;
+    }
+    if let Some(sel) = app.session.active().and_then(|st| st.selection.inline_object()) {
+        inline_object::inline_sections(app, ui, sel);
         return;
     }
     let Some(i) = info else {

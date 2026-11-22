@@ -27,7 +27,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Anchored Object Options…",
             ["Object", "Anchored Object"],
             None,
-            "{story?, index? (default: the object at the insertion point), position?: inline|aboveLine|custom, yOffset?, align?: left|center|right, spaceBefore?, spaceAfter?, xRelative? | yRelative?: anchor|textFrame|columnEdge|pageMargin|pageEdge, xOffset?, objectPoint? | refPoint?: 0..8, keepWithinColumn?, spineRelative? (custom: the settings describe a left-hand page and mirror on a right-hand page)}",
+            "{story?, index? (default: the selected object in text, or the one at the insertion point), position?: inline|aboveLine|custom, yOffset?, align?: left|center|right, spaceBefore?, spaceAfter?, xRelative? | yRelative?: anchor|textFrame|columnEdge|pageMargin|pageEdge, xOffset?, objectPoint? | refPoint?: 0..8, keepWithinColumn?, spineRelative? (custom: the settings describe a left-hand page and mirror on a right-hand page)}",
             has_doc,
             options
         ),
@@ -36,7 +36,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Release",
             ["Object", "Anchored Object"],
             None,
-            "{story?, index? (default: the object at the insertion point)} — puts the object back on the page where it is now and removes it from the text",
+            "{story?, index? (default: the selected object in text, or the one at the insertion point)} — puts the object back on the page where it is now and removes it from the text",
             has_doc,
             release
         ),
@@ -45,7 +45,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Resize Anchored Object",
             [],
             None,
-            "{story?, index? (default: the object at the insertion point), width?, height? (pt; one of them keeps the proportions, both set that size)} — scales the object and its content; stroke weights stay, the text reflows around the new size",
+            "{story?, index? (default: the selected object in text, or the one at the insertion point), width?, height? (pt; one of them keeps the proportions, both set that size)} — scales the object and its content; stroke weights stay, the text reflows around the new size",
             has_doc,
             resize
         ),
@@ -54,10 +54,51 @@ pub fn specs() -> Vec<CommandSpec> {
             "Delete Anchored Object",
             [],
             None,
-            "{story?, index? (default: the object at the insertion point)} — takes the object out of the text and deletes it",
+            "{story?, index? (default: the selected object in text, or the one at the insertion point)} — takes the object out of the text and deletes it",
             has_doc,
             delete
         ),
+        cmd!(
+            "anchored.frame",
+            "Crop Anchored Picture",
+            [],
+            None,
+            "{story?, index? (default: the selected object in text, or the one at the insertion point), rect?: [x0, y0, x1, y1] (the object's space, its top-left at 0,0) | width?, height? (pt; the top-left stays)} — gives the object's picture frame that box; the picture stays where it is (crops or uncovers it), the outline beside it in a chat photo follows",
+            has_doc,
+            frame
+        ),
+        cmd!(
+            "anchored.content",
+            "Move Anchored Picture Content",
+            [],
+            None,
+            "{story?, index?, dx?, dy? (pt), scale?: n | [sx, sy] (of the natural size, 1 = 100 %), about?: [x, y] (the object's space; default the picture's centre)} — moves or scales the picture inside its frame",
+            has_doc,
+            content
+        ),
+        cmd!(
+            "anchored.fit",
+            "Fit Anchored Picture",
+            [],
+            None,
+            "{story?, index?, mode: fillProportionally|fitProportionally|fitContentToFrame|centerContent|fitFrameToContent}",
+            has_doc,
+            fit
+        ),
+        cmd!(query "anchored.picture", "Anchored Picture", [], None, "{story?, index?} → {size, frame: [x0, y0, x1, y1], content: [x0, y0, x1, y1], scale: [sx, sy]} in the object's space (no frame/content for an object without a picture)", has_doc, |s, p| {
+            let (sid, k) = object_ref(s, p, "anchored.picture")?;
+            let o = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad("anchored.picture", "no such anchored object"))?;
+            let r = |r: designcraft_geom::Rect| json!([r.x0, r.y0, r.x1, r.y1]);
+            let mut out = json!({"size": o.size()});
+            if let Some(f) = o.picture_rect() {
+                out["frame"] = r(f);
+            }
+            if let Some((c, (sx, sy))) = o.picture_content() {
+                out["content"] = r(c);
+                out["scale"] = json!([sx, sy]);
+            }
+            Ok(out)
+        }),
         cmd!(query "anchored.list", "Anchored Objects", [], None, "{story?} → [{story, index, pos, position, size}]", has_doc, |s, p| {
             let d = &s.doc()?.doc;
             let only = p.get("story").and_then(Value::as_u64).map(StoryId);
@@ -195,6 +236,9 @@ fn object_ref(s: &Session, p: &Value, cmd: &str) -> Result<(StoryId, usize)> {
         return Ok((StoryId(sid), k as usize));
     }
     let st = s.doc()?;
+    if let Some(o) = st.selection.inline_object() {
+        return Ok((o.story, o.index));
+    }
     let t = st
         .selection
         .text
@@ -362,6 +406,49 @@ mod tests {
         assert!(st.text.starts_with("Before after"), "{:?}", st.text);
         s.execute("edit.undo", &json!({})).unwrap();
         assert_eq!(s.doc().unwrap().doc.story(sid).unwrap().objects.len(), 1, "undo brings it back");
+    }
+
+    /// A chat photo in the text (picture frame grouped with an outline of its size, offset): it
+    /// is selected as the whole selection; cropping keeps the picture where it is and the outline
+    /// follows the frame; the picture moves and scales inside its frame; fitting fills it again.
+    #[test]
+    fn a_picture_in_text_crops_moves_scales_and_fits() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect": [72, 72, 400, 400], "content": "text", "text": "Photo: here."})).unwrap();
+        let sid = s.doc().unwrap().doc.item(ItemId(r["id"].as_u64().unwrap())).unwrap().text_frame().unwrap().story;
+        let png = designcraft_render::Rendered { width: 40, height: 20, pixels: vec![200u8; 40 * 20 * 4] }.to_png();
+        let f = s.execute("frame.create", &json!({"rect": [450, 450, 530, 490], "content": "graphic"})).unwrap()["id"].clone();
+        s.execute("file.place", &json!({"base64": super::super::file::base64_encode(&png), "name": "p.png", "frame": f})).unwrap();
+        s.execute("object.fit", &json!({"mode": "fillProportionally", "ids": [f]})).unwrap();
+        let outline = s.execute("frame.create", &json!({"rect": [452, 452, 532, 492], "content": "unassigned"})).unwrap()["id"].clone();
+        let g = s.execute("object.group", &json!({"ids": [f, outline]})).unwrap()["id"].clone();
+        s.execute("anchored.insert", &json!({"ids": [g], "story": sid.0, "pos": 7})).unwrap();
+        s.execute("selection.set", &json!({"inline": {"story": sid.0, "index": 0}})).unwrap();
+        let picture = |s: &mut Session| s.execute("anchored.picture", &json!({})).unwrap();
+        let p0 = picture(&mut s);
+        let r = |v: &Value| [0, 1, 2, 3].map(|i| v[i].as_f64().unwrap());
+        let (frame0, content0) = (r(&p0["frame"]), r(&p0["content"]));
+        // Crop from the right: the frame narrows, the picture stays, the outline narrows with it.
+        s.execute("anchored.frame", &json!({"width": 50})).unwrap();
+        let p1 = picture(&mut s);
+        assert!((r(&p1["frame"])[2] - r(&p1["frame"])[0] - 50.0).abs() < 1e-6, "{p1}");
+        assert_eq!(r(&p1["content"]), content0, "the picture did not move");
+        let size = s.doc().unwrap().doc.story(sid).unwrap().objects[0].size();
+        assert!(size.0 < frame0[2] - frame0[0], "the outline narrowed too: {size:?}");
+        // Move and scale the picture inside the frame.
+        s.execute("anchored.content", &json!({"dx": -10})).unwrap();
+        assert!(r(&picture(&mut s)["content"])[0] < content0[0], "moved left");
+        let before = picture(&mut s)["scale"][0].as_f64().unwrap();
+        s.execute("anchored.content", &json!({"scale": before * 1.5})).unwrap();
+        assert!((picture(&mut s)["scale"][0].as_f64().unwrap() / before - 1.5).abs() < 1e-6, "scaled");
+        // Fill the frame again: the picture covers it.
+        s.execute("anchored.fit", &json!({"mode": "fillProportionally"})).unwrap();
+        let p = picture(&mut s);
+        let (fr, co) = (r(&p["frame"]), r(&p["content"]));
+        assert!(co[0] <= fr[0] + 1e-6 && co[1] <= fr[1] + 1e-6 && co[2] >= fr[2] - 1e-6 && co[3] >= fr[3] - 1e-6, "{p}");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_ne!(picture(&mut s)["content"], p["content"], "each change is an undo step");
     }
 
     #[test]
@@ -705,4 +792,122 @@ mod text_frame_tests {
         // The document's own graphic keeps its file.
         assert_eq!(s.doc().unwrap().doc.assets.get(&b).unwrap().data, own);
     }
+}
+
+/// Change anchored object `(sid, k)` with `f`, then keep its top-left at the origin.
+fn change_object(s: &mut Session, cmd: &'static str, sid: StoryId, k: usize, f: impl FnOnce(&mut AnchoredObject) -> Result<()>) -> Result<Value> {
+    s.edit(|d, _| {
+        let st = d.story_mut(sid).ok_or(designcraft_doc::DocError::NoStory(sid))?;
+        let o = Arc::make_mut(st.objects.get_mut(k).ok_or_else(|| bad(cmd, "no such anchored object"))?);
+        f(o)?;
+        o.normalize();
+        let size = o.size();
+        st.rev = st.rev.wrapping_add(1);
+        Ok(json!({"story": sid.0, "index": k, "size": [size.0, size.1]}))
+    })
+}
+
+fn rect_param(p: &Value, key: &str) -> Option<designcraft_geom::Rect> {
+    let a = p.get(key)?.as_array()?;
+    let v: Vec<f64> = a.iter().filter_map(Value::as_f64).collect();
+    (v.len() == 4 && v.iter().all(|x| x.is_finite())).then(|| designcraft_geom::Rect::new(v[0], v[1], v[2], v[3]).abs())
+}
+
+/// The picture frame of `o` becomes `n` (the object's space); the graphic stays where it is. In a
+/// group (a chat photo), parts of the photo's size (its offset outline) take the new box at their
+/// offset, smaller parts (a play button) keep their place relative to the box's centre.
+fn set_picture_rect(o: &mut AnchoredObject, n: designcraft_geom::Rect) -> Option<()> {
+    let old = o.picture_rect()?;
+    let (k, xf) = o.picture_frame()?;
+    let inv = xf.inverse();
+    o.picture_mut()?.path = designcraft_geom::shapes::rectangle(inv.transform_rect_bbox(n));
+    let Some(k) = k else { return Some(()) };
+    let gxf = o.item.xf;
+    let shift = n.center() - old.center();
+    for (j, c) in o.item.children_mut()?.iter_mut().enumerate() {
+        if j == k {
+            continue;
+        }
+        let c = Arc::make_mut(c);
+        let cxf = gxf * c.xf;
+        let b = cxf.transform_rect_bbox(c.inner_bounds());
+        if (b.width() - old.width()).abs() < 0.5 && (b.height() - old.height()).abs() < 0.5 {
+            let nb = n + (b.origin() - old.origin());
+            c.path = designcraft_geom::shapes::rectangle(cxf.inverse().transform_rect_bbox(nb));
+        } else {
+            // Into the group's space: the object's shift without the group's own translation.
+            let v = gxf.inverse() * designcraft_geom::Point::new(shift.x, shift.y) - gxf.inverse() * designcraft_geom::Point::ZERO;
+            c.xf = Affine::translate(v) * c.xf;
+        }
+    }
+    Some(())
+}
+
+fn frame(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "anchored.frame";
+    let (sid, k) = object_ref(s, p, CMD)?;
+    let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+    let old = cur.picture_rect().ok_or_else(|| bad(CMD, "the object has no picture frame"))?;
+    let side = |key: &str| p.get(key).and_then(Value::as_f64);
+    let n = match rect_param(p, "rect") {
+        Some(r) => r,
+        None => designcraft_geom::Rect::from_origin_size(old.origin(), (side("width").unwrap_or(old.width()), side("height").unwrap_or(old.height()))),
+    };
+    if !(MIN_SIDE..=MAX_SIDE).contains(&n.width()) || !(MIN_SIDE..=MAX_SIDE).contains(&n.height()) {
+        return Err(bad(CMD, format!("sides: {MIN_SIDE} to {MAX_SIDE} pt")));
+    }
+    change_object(s, CMD, sid, k, |o| set_picture_rect(o, n).ok_or_else(|| bad(CMD, "the object has no picture frame")))
+}
+
+fn content(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "anchored.content";
+    let (sid, k) = object_ref(s, p, CMD)?;
+    let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+    let (rect, (sx0, sy0)) = cur.picture_content().ok_or_else(|| bad(CMD, "the object has no picture"))?;
+    let (dx, dy) = (p.get("dx").and_then(Value::as_f64).unwrap_or(0.0), p.get("dy").and_then(Value::as_f64).unwrap_or(0.0));
+    let scale = match p.get("scale") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(a)) => match (a.first().and_then(Value::as_f64), a.get(1).and_then(Value::as_f64)) {
+            (Some(x), Some(y)) => Some((x, y)),
+            _ => return Err(bad(CMD, "scale: n or [sx, sy]")),
+        },
+        Some(v) => v.as_f64().map(|x| (x, x)),
+    };
+    if let Some((x, y)) = scale
+        && !(x > 0.001 && y > 0.001 && x < 1000.0 && y < 1000.0)
+    {
+        return Err(bad(CMD, "scale: 0.001 to 1000"));
+    }
+    let about = p.get("about").and_then(Value::as_array).and_then(|a| Some(designcraft_geom::Point::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?))).unwrap_or_else(|| rect.center());
+    let mut m = Affine::translate((dx, dy));
+    if let Some((x, y)) = scale {
+        m = m * Affine::translate(about.to_vec2()) * Affine::scale_non_uniform(x / sx0, y / sy0) * Affine::translate(-about.to_vec2());
+    }
+    change_object(s, CMD, sid, k, |o| {
+        let (_, xf) = o.picture_frame().ok_or_else(|| bad(CMD, "the object has no picture"))?;
+        let Some(Content::Graphic(g)) = o.picture_mut().map(|i| &mut i.content) else { return Err(bad(CMD, "the object has no picture")) };
+        g.xf = xf.inverse() * m * xf * g.xf;
+        Ok(())
+    })
+}
+
+fn fit(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "anchored.fit";
+    let (sid, k) = object_ref(s, p, CMD)?;
+    let mode = str_param(p, "mode").unwrap_or("fitProportionally");
+    if mode == "fitFrameToContent" {
+        let cur = s.doc()?.doc.story(sid).and_then(|st| st.objects.get(k).cloned()).ok_or_else(|| bad(CMD, "no such anchored object"))?;
+        let (r, _) = cur.picture_content().ok_or_else(|| bad(CMD, "the object has no picture"))?;
+        return change_object(s, CMD, sid, k, |o| set_picture_rect(o, r).ok_or_else(|| bad(CMD, "the object has no picture frame")));
+    }
+    let m = super::object::fitting_mode(mode).filter(|m| *m != designcraft_doc::Fitting::None).ok_or_else(|| bad(CMD, format!("unknown mode `{mode}`")))?;
+    change_object(s, CMD, sid, k, |o| {
+        let pic = o.picture_mut().ok_or_else(|| bad(CMD, "the object has no picture"))?;
+        let r = pic.inner_bounds();
+        let Content::Graphic(g) = &mut pic.content else { return Err(bad(CMD, "the object has no picture")) };
+        if let Some(xf) = g.fitted(r, m) {
+            g.xf = xf;
+        }
+        Ok(())
+    })
 }

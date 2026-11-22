@@ -209,7 +209,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Color Swatch…",
             [],
             None,
-            "{name?, color: \"#rrggbb\"|{c,m,y,k}(0..100)|[r,g,b](0..255)|{model: rgb|cmyk|gray, …}(0..1), spot?: bool} | {name? (\"<base> <tint>%\"), base: a colour swatch, tint: 0–1} (a tint swatch that follows its base) | {name? (\"New Gradient Swatch\"), gradient: {kind?: linear|radial, stops: [{location: 0–100, swatch?: a colour swatch's name | color?, opacity?: 0–100, midpoint?: 13–87}]}} → {name}",
+            "{name?, color: \"#rrggbb\"|{c,m,y,k}(0..100)|[r,g,b](0..255)|{model: rgb|cmyk|gray, …}(0..1), spot?: bool} | {name?, base: a colour swatch, tint: 0–1 (a tint swatch that follows its base, named \"<base> <tint>%\" by default)} | {name? (\"New Gradient Swatch\"), gradient: {kind?: linear|radial, stops: [{location: 0–100, swatch?: a colour swatch's name | color?, opacity?: 0–100, midpoint?: 13–87}]}} → {name}",
             has_doc,
             create_swatch
         ),
