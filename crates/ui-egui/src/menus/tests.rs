@@ -2349,6 +2349,7 @@ fn searched_ui_commands_run_without_parameters_and_keep_preferences() {
         "app.tablePanel",
         "jahresbuch.chatImport",
         "jahresbuch.chatDesign",
+        "app.pageNumbersPanel",
         "window.collapseToIcons",
     ];
     let arrangement = ["docking", "dockingHidden", "floating"];

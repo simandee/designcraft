@@ -130,15 +130,15 @@ impl Mix {
             Mix::Overprint { .. } => "Overprint",
             Mix::Multiply { .. } => "Multiply",
             Mix::Pigment { .. } => "Pigment",
-            Mix::Light { .. } => "Light",
-            Mix::Perceptual { .. } => "Perceptual",
+            Mix::Light { .. } => "Screen",
+            Mix::Perceptual { .. } => "Perceptual Mean",
             Mix::HueJump { .. } => "Hue Jump",
             Mix::Darken { .. } => "Darken",
             Mix::Difference { .. } => "Difference",
             Mix::Knockout { .. } => "Knockout",
             Mix::Depth { .. } => "Depth",
             Mix::Halftone { .. } => "Halftone",
-            Mix::Custom { .. } => "Custom",
+            Mix::Custom { .. } => "Custom Overlaps",
         }
     }
 }

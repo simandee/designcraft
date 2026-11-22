@@ -235,6 +235,37 @@ Ursprünglicher Plan:
   Eigenschaften-Fenster und in der Steuerleiste stehen und dort änderbar sein (nicht im
   Jahresbuch-Fenster).
 
+## Fenster „Seitenzahlen“ (Überdruck-Seitenzahlen, mit dem User am 22.11.2026 entschieden)
+
+Idee (Vorlage: Riso-Poster mit übereinanderliegenden Ziffern 5-6-7): jede Stelle der Seitenzahl ist eine
+eigene Druckfarbe (Hunderter, Zehner, Einer; längere Zahlen wiederholen die drei von rechts), die Ziffern
+liegen als **Kaskade** versetzt übereinander, die Überschneidungen werden nach einem Mischmodus gefärbt.
+Gedruckt wird bei **WIRmachenDRUCK (CMYK)**: jede Fläche bekommt einen festen CMYK-Wert, keine Transparenz.
+
+- **Einklinken statt neu erfinden:** Position, linke/rechte Seite, Abschnitte, Startnummer bleiben wie
+  gewohnt (Marke „Aktuelle Seitenzahl“ in einem Textrahmen auf der Musterseite). Neu ist nur: ein
+  **Zeichenformat** kann eine Gestaltung haben; steht die Marke darin, zeichnet DesignCraft die Ziffern
+  als Kaskade (Größe = Schriftgröße des Zeichenformats, mittig auf der Stelle des normalen Texts).
+- **Zufall fest pro Seitenzahl** (gleiche Seite = gleiches Bild), „Neu würfeln“ je Seite, „Zurücksetzen“.
+- **Fenster** (Entwurf „B mit Galerie aus C“ vom User gewählt): Gestaltung + Neu; Vorschau der Seite im
+  Blick + 3 Nachbarseiten; Reiter **Form** (Name, Schrift mit Achsen-Reglern bei variablen Schriften,
+  empfohlene Schriften Fraunces Black (opsz 72, SOFT 50), Ultra, Unbounded, Bricolage Grotesque,
+  Work Sans, Space Grotesk; **Abstand** und **Vertikale Ausrichtung** je *Variabel* (Tendenz, Streuung)
+  oder *Fest* (Schritt); Passerversatz; oben liegt Einer/Hunderter), **Farben** (3 CMYK-Farben, aus
+  Farbfeld übernehmbar), **Mischung** (Galerie aller Modi auf der eigenen Seitenzahl, darunter die Regler);
+  unten „Für Seitenzahlen verwenden“ / „Nicht mehr verwenden“ / „Gestaltung löschen“.
+- **Mischmodi** (alle vom User gewünscht, Lieblinge: Licht, Differenz, Aussparen, Raster): Überdruck
+  (Farbauftrag max., Deckkraft), Multiplizieren, Pigment (Kubelka-Munk), Licht (Stärke, Leuchten,
+  Leuchtfarbe), Wahrnehmung (OKLab), Farbkreis-Sprung, Abdunkeln/Aufhellen, Differenz/Ausschluss
+  (Mindesthelligkeit), Aussparen (Papier oder „obere schneidet“ mit Kante), Tiefenstufen, Raster
+  (Punkte/Linien/Kreuze, Rasterweite, Punktgröße, Winkel je Farbe), **Eigene** (Drei-Kreise-Diagramm,
+  Überlappung anklicken: wie die übrigen / Papier / eigene Farbe).
+- Technik: `crates/doc/src/pagenum.rs` (Gestaltung, gespeichert im Dokument-Etikett `pageNumbers`),
+  `crates/compose/src/pagenum.rs` (Ziffern als Flächen, Überschneidungen, Farben),
+  `crates/engine/src/cmd/pagenum.rs` (Befehle `pageNumbers.settings/setDesign/deleteDesign/reroll/assign`),
+  Fenster `crates/ui-egui/src/page_numbers/` (Befehl `app.pageNumbersPanel {tab, design}`).
+- Noch offen: im PDF sind die Ziffern Flächen (für Suche/Vorlesen fehlt noch unsichtbarer Text).
+
 ## Gemerkt für später (dem User von sich aus wieder vorschlagen)
 
 - **Haken pro Art, was ins Buch kommt** (Fotos, Videos, Sprachnachrichten, Sticker, Links,

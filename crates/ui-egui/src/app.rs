@@ -137,6 +137,7 @@ impl DesignApp {
             cursors: cursors::Images::default(),
             live_preview: LivePreview::default(),
             jahresbuch: Default::default(),
+            page_numbers: Default::default(),
             updates_rt: updates_ui::Runtime::default(),
         }
     }

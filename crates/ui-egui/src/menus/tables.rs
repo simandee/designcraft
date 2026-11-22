@@ -595,6 +595,7 @@ pub const MENUS: &[(&str, &[&str])] = &[
             "ui:window.panel|Page Transitions|{\"panel\": \"transitions\"}",
             "<",
             "ui:window.panel|Jahresbuch|{\"panel\": \"jahresbuch\"}",
+            "ui:window.panel|Page Numbers|{\"panel\": \"pageNumbers\"}",
             "ui:window.panel|Layers|{\"panel\": \"layers\"}",
             "ui:window.panel|Links|{\"panel\": \"links\"}",
             ">Object & Layout",

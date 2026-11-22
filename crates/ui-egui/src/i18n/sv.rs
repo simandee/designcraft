@@ -1231,6 +1231,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Snap to Zone", "Fäst mot zon"),
     ("Info", "Info"),
     ("Jahresbuch", "Årsbok"),
+    ("Page Numbers", "Sidnummer"),
     ("Index", "Register"),
     ("Articles", "Artiklar"),
     ("Tags", "Taggar"),
