@@ -166,6 +166,19 @@ Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
   ohne Vorhandenes (Handarbeit) anzufassen.
 - **Bereich neu aufbauen** (ok): einen Zeitraum neu einfügen, mit Warnung (Handarbeit dort geht
   verloren).
+- **Aufbau des Fensters (Entwurf mit dem User abgestimmt 22.11.2026, Screenshots „Entwurf 1–4“):**
+  Bedienelemente wie sonst in DesignCraft: Schriftgrößen = Feld mit ▲▼ und Größenliste (wie
+  Schriftgröße im Eigenschaften-Fenster); Abstände = ▲▼-Feld in pt; Korn/Rauschen = %-Feld mit
+  ›-Knopf, der einen Regler aufklappt (wie Deckkraft); Farben = Farbfelder. Abschnitte **einklappbar**
+  mit Dreieck (wie Fenster Typografie): Personen, Schrift, Abstände, Korn und Rauschen, Chat.
+  Ansicht „Neuer Chat“: Export + Wählen, Medienordner, Auswahl des Chats im Export, Zeitraum Von/Bis
+  mit **eigenem Monatskalender** (aufklappbar, Knöpfe „Ganzer Monat“, „Heute“; Datum über chrono,
+  keine neue Bibliothek), Anzahl Nachrichten/Fotos, „Aussehen wie Chat …“/Standard, Ziel, Knopf.
+  Ansicht „Chat“: **Name des Chats editierbar**, Zeitraum/Anzahl, dann die Abschnitte; unten Knöpfe
+  „Fortsetzen …“ und „Neu aufbauen …“. ☰-Menü des Fensters: **„Neuen Chat einfügen …“**.
+  Zahlenfelder sollen **„8,4“ mit Komma** verstehen (DesignCraft kann bisher nur Punkt → in
+  `widgets.rs` NumKind::parse ergänzen, mit Test). Platz: eigene **dritte Spalte links** im Dock,
+  anfangs **eingeklappt** (nur Symbol); der User dockt es selbst um. Eigenes Symbol zeichnen.
 - **Chat-Fotos wie andere Bilder:** Anfasser gibt es schon; dazu sollen ihre Maße im normalen
   Eigenschaften-Fenster und in der Steuerleiste stehen und dort änderbar sein (nicht im
   Jahresbuch-Fenster).
