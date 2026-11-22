@@ -143,6 +143,30 @@ Der Chat ist **ein verketteter Text** im großen Buch und wird immer wieder von 
 (Fotos, Geschichten) unterbrochen; manchmal steht vor dem Chat auf derselben Seite noch Text.
 Deshalb: Chat in verkettete Textrahmen des Buchs, nicht als eigenes PDF.
 
+## Geplant: Fenster „Jahresbuch“ (mit dem User am 22.11.2026 besprochen, noch nicht gebaut)
+
+- **Andockbares Seitenfenster** „Jahresbuch“ mit eigenem Symbol (wie Ebenen/Farbfelder; in
+  `dock.rs` registrieren, Symbol in `icons.rs`), ersetzt die beiden Menü-Dialoge (die Menüpunkte
+  öffnen dann das Fenster).
+- **Inhalt nach Auswahl:** nichts/leerer Textrahmen markiert → **Chat einfügen** (Export,
+  Medienordner, Zeitraum, Knopf); Rahmen oder Textcursor in einem bestehenden Chat → **Chat
+  gestalten** (Farben, Schrift, Schriftgrößen, Korn/Rauschen, Abstände) **dieses** Chats. Chat
+  erkannt an seinen Absatzformaten.
+- **Änderungen wirken sofort** (wie andere Seitenfenster), ⌘Z nimmt zurück; ein Regler-Zug = ein
+  Rückgängig-Schritt. Kein Vorschau-Haken/OK mehr.
+- **Mehrere Chats je Buch, jeder mit eigenem Look:** je Chat eigene Formate und Farbfelder (z. B.
+  Gruppe „Chat 2“) und eigene Chat-Mustervorlage (Spalten-Box in seinen Farben).
+- **Gruppenchats kommen vor:** mehr als zwei Personen → Farben/Seiten für die anderen klären
+  (Vorschlag noch offen: Ich rechts, alle anderen links, je eigene Farbe, Name über der Blase wie
+  bei WhatsApp-Gruppen). **Vor dem Bauen mit dem User klären.**
+- **Chat fortsetzen** (gewünscht): weiteren Zeitraum hinten an einen bestehenden Chat anhängen,
+  ohne Vorhandenes (Handarbeit) anzufassen.
+- **Bereich neu aufbauen** (ok): einen Zeitraum neu einfügen, mit Warnung (Handarbeit dort geht
+  verloren).
+- **Chat-Fotos wie andere Bilder:** Anfasser gibt es schon; dazu sollen ihre Maße im normalen
+  Eigenschaften-Fenster und in der Steuerleiste stehen und dort änderbar sein (nicht im
+  Jahresbuch-Fenster).
+
 ## Offen / nächste Schritte
 
 1. **Erster Test des Jahresbuch-Menüs auf dem Mac** (war gerade dran: zwei Spaltenrahmen gezogen,
