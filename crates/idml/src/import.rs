@@ -807,6 +807,7 @@ impl<'r> Importer<'r> {
             footnote_options: std::mem::take(&mut self.footnote_options),
             xref_formats: std::mem::take(&mut self.xref_formats),
             index: None,
+            labels: Default::default(),
             created: self.created.unwrap_or_else(designcraft_doc::vars::now),
             modified: self.modified.unwrap_or(0),
             next_id: self.next_id,

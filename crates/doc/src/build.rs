@@ -161,6 +161,7 @@ impl Document {
             footnote_options: Default::default(),
             xref_formats: crate::xref::default_formats(),
             index: None,
+            labels: Default::default(),
             created: crate::vars::now(),
             modified: 0,
             next_id: 0,

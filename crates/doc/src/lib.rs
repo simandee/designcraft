@@ -923,6 +923,10 @@ pub struct Document {
     /// The generated index (kept for Update Index).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<index::IndexSpec>,
+    /// Labels on the document (InDesign's `insertLabel`/`extractLabel`): free text under a key,
+    /// saved with the document, for scripts and extensions to keep their own data in.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
     /// Creation / last save time (Unix seconds, UTC).
     #[serde(default)]
     pub created: i64,

@@ -114,6 +114,8 @@ fn same_document(old: &Document, new: &Document) -> bool {
         footnote_options,
         xref_formats,
         index,
+        // Labels are data for scripts and extensions: nothing on the page shows them.
+        labels: _,
         created,
         modified,
         next_id,

@@ -9,6 +9,29 @@ use crate::{Result, Session};
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(query "document.inspect", "Inspect Document", [], None, "{} → pages, spreads, items, stories (with overset), styles, swatches, selection", has_doc, inspect),
+        cmd!(query "document.label", "Document Label", [], None, "{key} → the text stored under `key` on the document, or null", has_doc, |s, p| {
+            let key = super::str_param(p, "key").ok_or_else(|| super::bad("document.label", "`key` required"))?;
+            Ok(s.doc()?.doc.labels.get(key).map_or(Value::Null, |v| json!(v)))
+        }),
+        cmd!(
+            "document.setLabel",
+            "Set Document Label",
+            [],
+            None,
+            "{key, value?: string (null or missing: remove it)} — free text saved with the document under `key`, for scripts and extensions",
+            has_doc,
+            |s, p| {
+                let key = super::str_param(p, "key").filter(|k| !k.is_empty()).ok_or_else(|| super::bad("document.setLabel", "`key` required"))?.to_string();
+                let value = p.get("value").and_then(Value::as_str).map(str::to_string);
+                s.edit(|d, _| {
+                    match &value {
+                        Some(v) => d.labels.insert(key.clone(), v.clone()),
+                        None => d.labels.remove(&key),
+                    };
+                    Ok(json!({"key": key, "value": value}))
+                })
+            }
+        ),
         cmd!(query "app.links", "Community & Project Links", [], None,
             "{} → {discord, website, appPage, github, issues} (ArtCraft Discord, website, DesignCraft page and repository)", always, |_, _| Ok(crate::links::all())),
         cmd!(query "document.list", "List Documents", [], None, "{}", always, |s, _| {
@@ -121,4 +144,30 @@ fn inspect(s: &mut Session, _p: &Value) -> Result<Value> {
         "tool": s.tool_id(),
         "canUndo": !st.history.undo.is_empty(),
     }))
+}
+
+#[cfg(test)]
+mod label_tests {
+    use serde_json::{Value, json};
+
+    use crate::Session;
+
+    /// A document label is kept under its key, saved with the file, undone like an edit, and
+    /// removed with no value.
+    #[test]
+    fn document_labels_are_kept_saved_and_undone() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), Value::Null);
+        s.execute("document.setLabel", &json!({"key": "a", "value": "{\"x\":1}"})).unwrap();
+        assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), json!("{\"x\":1}"));
+        let saved = designcraft_format::save(&s.doc().unwrap().doc).unwrap();
+        assert_eq!(designcraft_format::load(&saved).unwrap().labels.get("a").map(String::as_str), Some("{\"x\":1}"));
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), Value::Null, "undone");
+        s.execute("document.setLabel", &json!({"key": "a", "value": "1"})).unwrap();
+        s.execute("document.setLabel", &json!({"key": "a"})).unwrap();
+        assert_eq!(s.execute("document.label", &json!({"key": "a"})).unwrap(), Value::Null, "removed");
+        assert!(s.execute("document.setLabel", &json!({"value": "1"})).is_err(), "a key is needed");
+    }
 }
