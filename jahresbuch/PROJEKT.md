@@ -32,7 +32,7 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 
 | Ort | Inhalt |
 |---|---|
-| GitHub `simandee/designcraft`, Branch **`absatz-schatten`** | Fork von `storytold/designcraft` mit unseren Erweiterungen + Ordner `jahresbuch/` |
+| GitHub `simandee/designcraft`, Branch **`jahresbuch`** (bis 23.11.2026 hieß er `absatz-schatten`) | Fork von `storytold/designcraft` mit unseren Erweiterungen + Ordner `jahresbuch/` |
 | Mac `~/DesignCraft-Jahresbuch` | Klon davon; gebaut mit `cargo build --release -p designcraft -p designcraft-cli` |
 | Mac `~/DesignCraft-Jahresbuch/target/release/designcraft` | **seine** DesignCraft-Version (das installierte offizielle DesignCraft kann unsere Dateien nicht öffnen) |
 | Mac `~/WhatsApp-Export/ausgabe/euer_chat_mit_reaktionen.json` | WhatsApp-Export (45.546 Nachrichten, alle Jahre). Medien unter `ausgabe/AppDomainGroup-group.net.whatsapp.WhatsApp.shared/Message/Media/…` (Pfad = `ausgabe/` + `media_base` + `data`); das Hilfsprogramm sucht sie rekursiv im Medienordner `~/WhatsApp-Export/ausgabe` |
@@ -48,6 +48,21 @@ Git: Remote `origin` = Fork, `upstream` = `storytold/designcraft`. Commits mit d
 Am 22.11.2026 wurde dafür die ganze Git-Geschichte umgeschrieben (beide Zweige). Auf dem Mac ist
 einmal `git fetch origin` und `git reset --hard origin/absatz-schatten` nötig statt `git pull` –
 falls der User von einem Fehler bei `git pull` berichtet, daran denken.
+
+### Git-Regeln (fest, für jede Session – vom User am 23.11.2026 so gewünscht)
+
+Mehrere Sessions arbeiten gleichzeitig an diesem Zweig (z. B. Chat-Seiten, Seitenzahlen). Damit keine
+die Arbeit einer anderen löscht:
+1. **Gearbeitet wird auf dem Zweig `jahresbuch`.** Der alte Name `absatz-schatten` wird nicht mehr
+   benutzt (wird gelöscht, sobald alle umgestellt sind).
+2. **Vor dem Arbeiten und vor jedem Hochladen** den aktuellen Stand holen (`git fetch origin` und
+   `git merge origin/jahresbuch` bzw. `git pull`), auch wenn man glaubt, allein zu sein.
+3. **Nie überschreiben:** kein `git push --force`, kein Neuaufbau/Umschreiben der Geschichte
+   (rebase, reset) auf `jahresbuch`, solange nicht der aktuelle Stand von GitHub darin enthalten ist –
+   und auch dann nur nach ausdrücklicher Zustimmung des Users.
+4. **Wird ein Hochladen abgelehnt** („rejected“, „non-fast-forward“), hat eine andere Session etwas
+   hochgeladen: erst holen und zusammenführen, dann erneut hochladen – niemals erzwingen.
+5. Was eine Session baut, kommt hier in PROJEKT.md, damit die anderen davon wissen.
 
 In der Cloud: mit `CARGO_INCREMENTAL=0` bauen (sonst füllt `target/debug/incremental` die Platte,
 einmal 35 GB). Zwei Oberflächen-Tests (`a_later_field_taking_the_keyboard…`,

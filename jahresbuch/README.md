@@ -16,7 +16,7 @@ Deine Chats und Fotos liegen **nicht** hier, sondern nur auf deinem Mac.
 
 ## Was du brauchst
 
-- diese DesignCraft-Version (Branch `absatz-schatten` in diesem Repository); nur sie kennt
+- diese DesignCraft-Version (Branch `jahresbuch` in diesem Repository); nur sie kennt
   Schatten und Korn der Blasen
 - Python 3 mit den Paketen `pillow` und `emoji`
 - die Schriften **Space Grotesk** und **Fraunces** (kostenlos bei Google Fonts)
