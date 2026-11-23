@@ -11,6 +11,11 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
 - **Kommunikation:** Deutsch, einfache Sprache, **keine Programmier-Vorkenntnisse** voraussetzen
   (Begriffe wie Fork, Branch, Repo erklären oder vermeiden). Anleitungen Schritt für Schritt,
   Befehle zum Kopieren, nach jedem Schritt Screenshot abwarten.
+- **Neue Fachbegriffe mit der Kochbuch-Analogie erklären** (Wunsch des Users, 23.11.2026): das
+  GitHub-Projekt ist ein Rezeptbuch-Ordner im Internet, `main` das Original-Rezeptbuch der
+  DesignCraft-Entwickler, ein Branch/Zweig eine eigene Kopie des Rezeptbuchs, `jahresbuch` seine Kopie
+  mit unseren eigenen Rezepten, `git pull` = neuesten Stand der Kopie auf den Mac holen, Neubau =
+  aus den Rezepten das Programm kochen. Neue Begriffe in dieses Bild einordnen.
 - **Ein Thema nach dem anderen.** Bei Unklarheiten **erst fragen, dann erzeugen** (hat sich mehrfach
   über falsch verstandene Wünsche geärgert). Bei Gestaltungsfragen gern Varianten nebeneinander zeigen.
 - **Keine Arbeit in andere Sessions auslagern** (außer der User will es ausdrücklich).
@@ -63,6 +68,10 @@ die Arbeit einer anderen löscht:
 4. **Wird ein Hochladen abgelehnt** („rejected“, „non-fast-forward“), hat eine andere Session etwas
    hochgeladen: erst holen und zusammenführen, dann erneut hochladen – niemals erzwingen.
 5. Was eine Session baut, kommt hier in PROJEKT.md, damit die anderen davon wissen.
+
+Der Klon auf dem Mac holt nur ausdrücklich eingetragene Zweige: ein neuer Zweig braucht dort erst
+`git remote set-branches --add origin <zweig>`, dann `git fetch origin` (am 23.11.2026 für `jahresbuch` gemacht).
+Seit 23.11.2026 ist `jahresbuch` auf GitHub der Standard-Zweig (neue Sessions starten damit).
 
 In der Cloud: mit `CARGO_INCREMENTAL=0` bauen (sonst füllt `target/debug/incremental` die Platte,
 einmal 35 GB). Zwei Oberflächen-Tests (`a_later_field_taking_the_keyboard…`,
