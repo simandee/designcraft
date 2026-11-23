@@ -2235,7 +2235,7 @@ pub(super) const TABLE: &[(&str, &str)] = &[
     ("Paper", "Papier"),
     ("Own Colour", "Eigene Farbe"),
     ("Use for Page Numbers", "Für Seitenzahlen verwenden"),
-    ("This document has no page number yet. Put Type › Insert Special Character › Markers › Current Page Number in a text frame on a parent page.", "Dieses Dokument hat noch keine Seitenzahl. Setze Schrift › Sonderzeichen einfügen › Marken › Aktuelle Seitenzahl in einen Textrahmen auf einer Musterseite."),
+    ("This document has no page number yet. Put Type › Insert Special Character › Markers › Current Page Number in a text frame on a parent page.", "Dieses Dokument hat noch keine Seitenzahl. Setze sie in einen Textrahmen auf einer Musterseite (Parent Page): Type › Insert Special Character › Markers › Current Page Number."),
     ("no character style", "ohne Zeichenformat"),
     ("Page numbers in the document:", "Seitenzahlen im Dokument:"),
     ("Use This Design", "Diese Gestaltung verwenden"),

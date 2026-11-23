@@ -1236,12 +1236,7 @@ fn paint_text(pen: &mut Pen, name: &str) -> bool {
         "format-container" => pen.rect(4.0, 4.0, 16.0, 16.0),
         "format-text" => pen.text(10.0, 10.5, "T", 15.0),
         "panel-jahresbuch" => sprechblasen(pen, 2.5),
-        "panel-page-numbers" => {
-            // Two overlapping figures: an 0 and a 7 laid over it.
-            pen.w = 1.3;
-            pen.circle(8.0, 10.5, 5.0);
-            pen.line(&[(9.5, 5.0), (17.5, 5.0), (12.5, 17.0)]);
-        }
+        "panel-page-numbers" => treppe(pen),
         "panel-datamerge" => {
             pen.w = 1.2;
             pen.rect(3.0, 2.0, 17.0, 18.0);
@@ -1307,6 +1302,28 @@ pub fn button(ui: &mut egui::Ui, name: &str, size: f32, selected: bool, tip: &st
 
 /// Punkte eines Bogens um (cx, cy) mit Radius r von Winkel a0 bis a1 (Grad, im Uhrzeigersinn ab
 /// 3 Uhr).
+/// Das Seitennummerierungs-Symbol (Entwurf C): die Ziffern 1, 2, 3 als Treppe, jede tiefer als
+/// die vorige, wie die versetzten Ziffern der Seitenzahlen.
+fn treppe(pen: &mut Pen) {
+    pen.w = 1.3;
+    let fein = |out: &mut Vec<(f32, f32)>, cx: f32, cy: f32, r: f32, a0: f32, a1: f32| {
+        for k in 0..=16 {
+            let a = (a0 + (a1 - a0) * k as f32 / 16.0).to_radians();
+            out.push((cx + r * a.cos(), cy + r * a.sin()));
+        }
+    };
+    pen.line(&[(2.5, 5.0), (4.5, 3.5), (4.5, 10.5)]);
+    let mut zwei = Vec::new();
+    fein(&mut zwei, 9.0, 7.6, 2.2, 200.0, 360.0);
+    zwei.extend([(11.2, 8.0), (7.0, 13.0), (11.4, 13.0)]);
+    pen.line(&zwei);
+    let mut drei = Vec::new();
+    fein(&mut drei, 15.6, 10.6, 2.0, 200.0, 400.0);
+    drei.push((15.2, 12.4));
+    fein(&mut drei, 15.6, 14.6, 2.1, 270.0, 495.0);
+    pen.line(&drei);
+}
+
 fn bogen(out: &mut Vec<(f32, f32)>, cx: f32, cy: f32, r: f32, a0: f32, a1: f32) {
     let n = 6;
     for k in 0..=n {

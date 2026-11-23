@@ -17,6 +17,10 @@ use crate::widgets::{self, NumField};
 
 pub const PANEL: &str = "pageNumbers";
 
+/// The Jahresbuch extensions speak German whatever language DesignCraft is set to (the user's
+/// wish): the texts keep English keys and are looked up in the German catalogue.
+const LANG: &str = "de";
+
 /// Fonts that suit layered numbers, with the style to start from; shown when installed.
 const RECOMMENDED: &[(&str, &str)] = &[
     ("Fraunces", "Black {opsz:72,SOFT:50}"),
@@ -72,8 +76,8 @@ pub fn open(app: &mut DesignApp, p: &Value) -> Result<Value, String> {
     Ok(Value::Null)
 }
 
-fn tr<'a>(app: &DesignApp, s: &'a str) -> &'a str {
-    crate::i18n::tr(&app.ui.language, s)
+fn tr<'a>(_app: &DesignApp, s: &'a str) -> &'a str {
+    crate::i18n::tr(LANG, s)
 }
 
 fn hint(ui: &mut Ui, s: &str) {
@@ -97,7 +101,7 @@ fn save(app: &mut DesignApp, design: &Design, old: &str) {
 fn run(app: &mut DesignApp, cmd: &str, params: Value) {
     app.end_live_preview();
     if let Err(e) = app.run(cmd, params) {
-        app.status_error("Page Numbers", e);
+        app.status_error("Seitennummerierung", e);
     }
 }
 
@@ -113,8 +117,7 @@ fn unique_name(set: &Settings, base: &str) -> String {
 }
 
 pub fn show(app: &mut DesignApp, ui: &mut Ui) {
-    let title = tr(app, "Page Numbers").to_string();
-    widgets::selection_band(ui, &title);
+    widgets::selection_band(ui, "Seitennummerierung");
     let Some(st) = app.session.active() else {
         hint(ui, tr(app, "Open a document first."));
         return;
@@ -491,7 +494,7 @@ fn mixing_tab(app: &mut DesignApp, ui: &mut Ui, d: &mut Design, page: &str) {
 
 fn mode_fields(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
     let fw = widgets::full_width(ui);
-    let tr = |s: &'static str| crate::i18n::tr(&app.ui.language, s).to_string();
+    let tr = |s: &'static str| crate::i18n::tr(LANG, s).to_string();
     let mut custom = false;
     match &mut d.mix {
         Mix::Overprint { ink_limit, opacity } => {
@@ -588,7 +591,7 @@ fn mode_fields(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
 
 fn custom_fields(app: &mut DesignApp, ui: &mut Ui, d: &mut Design) {
     let fw = widgets::full_width(ui);
-    let tr = |s: &'static str| crate::i18n::tr(&app.ui.language, s).to_string();
+    let tr = |s: &'static str| crate::i18n::tr(LANG, s).to_string();
     // Start value: the mode the unchanged overlaps follow.
     let modes: Vec<Mix> = Mix::all().into_iter().filter(|m| !matches!(m, Mix::Custom { .. })).collect();
     let names: Vec<String> = modes.iter().map(|m| tr(m.name())).collect();

@@ -300,7 +300,7 @@ pub fn show(app: &mut DesignApp, ui: &mut Ui) {
     app.jahresbuch.laden();
     erledigen(app, ui);
     let Some(st) = app.session.active() else {
-        widgets::selection_band(ui, "Jahresbuch");
+        widgets::selection_band(ui, "Chat");
         klein(ui, "Zuerst das Buch öffnen (oder ein neues Dokument anlegen).");
         return;
     };

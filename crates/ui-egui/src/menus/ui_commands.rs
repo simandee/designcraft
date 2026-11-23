@@ -68,7 +68,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ),
     (
         "app.pageNumbersPanel",
-        "Page Numbers",
+        "Seitennummerierung",
         None,
         "{tab?: shape|colors|mixing, design?: name} — shows the Page Numbers panel (layered page number designs) at that tab and design; the designs themselves change with the pageNumbers.* commands",
     ),

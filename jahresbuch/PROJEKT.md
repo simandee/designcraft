@@ -16,6 +16,14 @@ Diese Datei fasst alles zusammen, was in früheren Sessions besprochen und gebau
   DesignCraft-Entwickler, ein Branch/Zweig eine eigene Kopie des Rezeptbuchs, `jahresbuch` seine Kopie
   mit unseren eigenen Rezepten, `git pull` = neuesten Stand der Kopie auf den Mac holen, Neubau =
   aus den Rezepten das Programm kochen. Neue Begriffe in dieses Bild einordnen.
+- **Unsere Erweiterungen sprechen Deutsch**, auch wenn DesignCraft selbst auf Englisch läuft (so ist es
+  beim User eingestellt; User am 23.11.2026). Im Code englische Übersetzungsschlüssel, nachgeschlagen
+  im deutschen Katalog (`page_numbers`: `const LANG = "de"`), Fensternamen fest deutsch. Menüpfade
+  von DesignCraft dem User auf **Englisch** nennen (z. B. Type › Insert Special Character …).
+- **Alles fürs Jahresbuch steht unter dem Überbegriff „Jahresbuch“** (User am 23.11.2026):
+  Window › Jahresbuch › **Chat** (das frühere Jahresbuch-Fenster, interne Kennung bleibt
+  `jahresbuch`) und › **Seitennummerierung**; beide in derselben eigenen Spalte der Seitenleiste
+  (`dock::OWN_COLUMN_PANELS`). Neue Jahresbuch-Fenster kommen dort dazu.
 - **Ein Thema nach dem anderen.** Bei Unklarheiten **erst fragen, dann erzeugen** (hat sich mehrfach
   über falsch verstandene Wünsche geärgert). Bei Gestaltungsfragen gern Varianten nebeneinander zeigen.
 - **Keine Arbeit in andere Sessions auslagern** (außer der User will es ausdrücklich).
@@ -284,6 +292,7 @@ Gedruckt wird bei **WIRmachenDRUCK (CMYK)**: jede Fläche bekommt einen festen C
   (Mindesthelligkeit), Aussparen (Papier oder „obere schneidet“ mit Kante), Tiefenstufen, Raster
   (Punkte/Linien/Kreuze, Rasterweite, Punktgröße, Winkel je Farbe), **Eigene** (Drei-Kreise-Diagramm,
   Überlappung anklicken: wie die übrigen / Papier / eigene Farbe).
+- Fenstername „Seitennummerierung“, Symbol Entwurf **C** (Treppe 1·2·3, `icons.rs` `treppe`), vom User gewählt.
 - Technik: `crates/doc/src/pagenum.rs` (Gestaltung, gespeichert im Dokument-Etikett `pageNumbers`),
   `crates/compose/src/pagenum.rs` (Ziffern als Flächen, Überschneidungen, Farben),
   `crates/engine/src/cmd/pagenum.rs` (Befehle `pageNumbers.settings/setDesign/deleteDesign/reroll/assign`),

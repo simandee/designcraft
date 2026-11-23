@@ -55,7 +55,7 @@ pub const ICON_PANELS: &[(&str, &str, &str)] = &[
 
 /// (id, label, icon) of the panels that start in an iconic column of their own, innermost, apart
 /// from the program's panel families: Jahresbuch (WhatsApp chats into the book).
-pub const OWN_COLUMN_PANELS: &[(&str, &str, &str)] = &[("jahresbuch", "Jahresbuch", "panel-jahresbuch"), ("pageNumbers", "Page Numbers", "panel-page-numbers")];
+pub const OWN_COLUMN_PANELS: &[(&str, &str, &str)] = &[("jahresbuch", "Chat", "panel-jahresbuch"), ("pageNumbers", "Seitennummerierung", "panel-page-numbers")];
 
 /// Every dock panel: (id, label, icon).
 pub fn panels() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
